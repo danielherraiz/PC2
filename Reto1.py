@@ -6,7 +6,7 @@ import selenium
 import re
 import time
 import scipy
-import os.path
+import os
 import json
 
 
@@ -22,24 +22,39 @@ st.header("Título")
 #Creo un diccionario con el nº de la página como clave y el contenido como valor
 #cachedPageContent = {}
 #función para obtener el contenido de la página de cache o via request
+def getCacheFilePath():
+    pythonFile_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(pythonFile_path, "cacheFile.json")
+
+fromCache = False
 def checkCachedFile(pageNumber):
-    if(os.path.isfile("CacheFile.json")):
-        with open("CacheFile.json","r") as cacheFile:
-            if (pageNumber in cacheFile):  
+    cachePath = getCacheFilePath()
+    if(os.path.isfile(cachePath)):
+        with open(cachePath,"r") as cacheFile:
+            print("cache read")
+            loadedJson = json.load(cacheFile)
+            if (pageNumber in loadedJson):  
                 #cachedPageContent = cacheFile[pageNumber]
-                return cacheFile[pageNumber]
+                print("cache info existing")
+                fromCache = True
+                return BeautifulSoup(cacheFile[str(pageNumber)])
             else:
                 return ''
     else:
         return ''
 
+
+
 def upsertCachedFile (pageNumber, soup):
-    with open("CacheFile.json", "a") as cacheFile:
+    cachePath = getCacheFilePath()
+    with open(cachePath, "a") as cacheFile:
         print('en upsert')
         tempDict = {pageNumber:str(soup)}
         #json.dump ({str(pageNumber):str(soup)} , cacheFile)
         json.dump (tempDict , cacheFile)
+        # write
         #cacheFile.write(json.dump({pageNumber:soup})
+
 
 def getPageContent (pageNumber):
     cachedContent = checkCachedFile(pageNumber)
@@ -47,14 +62,14 @@ def getPageContent (pageNumber):
         print(f"pag {pageNumber} obtenida desde cache")
         return cachedContent
     else:  
-        time.sleep(0.05)
+        # time.sleep(0.05)
         url = f"https://www.scrapethissite.com/pages/forms/?page_num={pageNumber}"
         page = requests.get(url)
         if page.status_code != 200:
             raise Exception(f"Expected 200, got {page.status_code}")
         soup = BeautifulSoup(page.content, "html.parser")
         print (page.status_code)
-        upsertCachedFile( pageNumber, soup)
+        upsertCachedFile(pageNumber, soup)
         return soup  
     
 
@@ -116,9 +131,14 @@ with tab1:
     filterValue = placeholderFilter1.number_input('Introduce un mínimo de diferencia de goles para el filtro',key='filterValueOnePage',disabled=not filter, step=1,)
    
     if st.button("Obtener",key='onePageButton'):
+        fromCache = False
         #cacheData={'From Cache':getCacheDetails(pageNumber)}
         df_onePag = getDfFromPage(pageNumber, filter, filterValue)
-        st.write(f"Datos obtenidos ({df_onePag.shape[0]} filas)")
+        st.write(f"Datos de los equipos ({df_onePag.shape[0]} filas)")
+        if fromCache:
+            st.write(f"Obenidos desde cache")
+        else:
+            st.write("Obtenido por request")
         print(df_onePag.shape)
         #df_onePag.head(10)
         st.dataframe(df_onePag)
