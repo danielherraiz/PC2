@@ -105,28 +105,32 @@ def getDfFromPageRange (firstPage, lastPage, withFilter, minGoalDif):
     return resultDf, origin_list
 
 #Extra para borrar el cache y testear que funciona el sistema de cache
-def deleteCacheFolder():
+def reviewDeleteCacheFolder(delete):
     folderPath = getCacheFolderPath()
     print(f'a borrar {folderPath}')
     if os.path.exists(folderPath):
-        st.write("Cache vaciado: ")
-        # First delete all files
+        if(delete):
+            st.sidebar.success("Cache vaciado: ")
+        else:
+            st.sidebar.info("Archivos en cache: ")
+        #Check o delete los archivos
         for filename in os.listdir(folderPath):
             file_path = os.path.join(folderPath, filename)
             if os.path.isfile(file_path):
-                os.remove(file_path)
-                st.write(f"{filename}")
-        # Then delete the folder itself
-        os.rmdir(folderPath)
+                if delete: os.remove(file_path)
+                st.sidebar.write(f"  {filename}")
+        #Check o delete la carpeta
+        if delete: os.rmdir(folderPath)
         print('vaciado')
         
     else:
         print('no vaciado')
-        st.write("No se ha encontrado nada en cache")
+        st.sidebar.warning("No se ha encontrado nada en cache")
 
 ### CODIGO PARA INTERACTUAR CON LA APLICACIÓN EN STREAMLIT33
+st.sidebar.header("Gestión de cache")
 
-tab1, tab2, tab3= st.tabs(["Una página", "Rango de páginas (Extra)", "Vaciar Cache"])
+tab1, tab2 = st.tabs(["Una página", "Rango de páginas (Extra)"])
 filterValue=''
 
 with tab1:
@@ -142,11 +146,14 @@ with tab1:
         fromCache = False
         #cacheData={'From Cache':getCacheDetails(pageNumber)}
         df_onePag, origin = getDfFromPage(pageNumber, filter, filterValue)
-        st.write(f"Datos de los equipos ({df_onePag.shape[0]} filas)")
+        if df_onePag.shape[0] > 0:
+            st.success(f"Se han encontrado {df_onePag.shape[0]} equipos")
+        else:
+            st.error(f"No se han encontrado equipos")
         print(df_onePag.shape)
         #df_onePag.head(10)
         st.dataframe(df_onePag)
-        st.write(f'La información fue obtenida desde {origin}')
+        st.sidebar.info(f'La información fue obtenida desde {origin}')
 
 with tab2:
     st.header("Datos de un rango de páginas")
@@ -156,14 +163,19 @@ with tab2:
     
     if st.button("Obtener",key='pageRangeButton'):
         df_multiplePag, origin_list = getDfFromPageRange(slider_range[0],slider_range[1], filter, filterValue)
-        st.write(f"Datos obtenidos ({df_multiplePag.shape[0]} filas)")
+        if df_multiplePag.shape[0] > 0:
+            st.success(f"Se han encontrado {df_multiplePag.shape[0]} equipos")
+        else:
+            st.error(f"No se han encontrado equipos")
         print(df_multiplePag.shape[0])
         #df_multiplePag.head(10)
         st.dataframe(df_multiplePag)
         df_origin = pd.DataFrame(origin_list)
-        st.write('La información fue obtenida desde:')
-        st.dataframe(df_origin,hide_index=True,use_container_width=False)
+        st.sidebar.info('La información fue obtenida desde:')
+        st.sidebar.dataframe(df_origin,hide_index=True,use_container_width=False)
 
-with tab3:
-    if st.button("Resetear Cache"):
-        deleteCacheFolder()
+#Opciones para revisar o vaciar cache
+if st.sidebar.button("Revisar Cache"):
+    reviewDeleteCacheFolder(False)
+if st.sidebar.button("Resetear Cache"):
+    reviewDeleteCacheFolder(True)
