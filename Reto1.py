@@ -16,66 +16,59 @@ st.set_page_config(
     #layout="wide",
 )
 
-st.title("Hola")
-st.header("Título")
+st.title("PC2 Reto 1")
+st.header("Daniel Herraiz")
 
-#Creo un diccionario con el nº de la página como clave y el contenido como valor
-#cachedPageContent = {}
-#función para obtener el contenido de la página de cache o via request
-def getCacheFilePath():
+## FUNCIONES PARA OBTENCION DE LOS DATOS DESDE REQUEST Y CACHE ##
+
+#función para obtener el path del archivo python (no vale el relativo al ejecutarse streamlit)
+def getCacheFolderPath():
     pythonFile_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(pythonFile_path, "cacheFile.json")
+    return os.path.join(pythonFile_path, "cached_pages")
 
-fromCache = False
+#Buscar si existe un archivo en cache para la página solicitada
 def checkCachedFile(pageNumber):
-    cachePath = getCacheFilePath()
-    if(os.path.isfile(cachePath)):
-        with open(cachePath,"r") as cacheFile:
+    cacheFolderPath = getCacheFolderPath()
+    cacheFilePath = os.path.join(cacheFolderPath, f"cachedPage_{pageNumber}.html")
+    if(os.path.exists(cacheFilePath)):
+        with open(cacheFilePath,"r") as cacheFile:
             print("cache read")
-            loadedJson = json.load(cacheFile)
-            if (pageNumber in loadedJson):  
-                #cachedPageContent = cacheFile[pageNumber]
-                print("cache info existing")
-                fromCache = True
-                return BeautifulSoup(cacheFile[str(pageNumber)])
-            else:
-                return ''
+            return cacheFile.read()
     else:
         return ''
-
-
-
-def upsertCachedFile (pageNumber, soup):
-    cachePath = getCacheFilePath()
-    with open(cachePath, "a") as cacheFile:
+    
+#Guardar información en cache
+def upsertCachedFile (pageNumber, pageContent):
+    # os.makedirs(data, exist_ok=True)
+    cacheFolderPath = getCacheFolderPath()
+    os.makedirs(cacheFolderPath, exist_ok=True)
+    cacheFilePath = os.path.join(cacheFolderPath, f"cachedPage_{pageNumber}.html")
+    with open(cacheFilePath, "wb") as cacheFile:
         print('en upsert')
-        tempDict = {pageNumber:str(soup)}
-        #json.dump ({str(pageNumber):str(soup)} , cacheFile)
-        json.dump (tempDict , cacheFile)
-        # write
-        #cacheFile.write(json.dump({pageNumber:soup})
+        cacheFile.write(pageContent)
 
-
+#Obtener el contenido de la página
+origin_list = []
 def getPageContent (pageNumber):
     cachedContent = checkCachedFile(pageNumber)
     if cachedContent!= '':
         print(f"pag {pageNumber} obtenida desde cache")
-        return cachedContent
+        return cachedContent, 'cache'
     else:  
-        # time.sleep(0.05)
+        time.sleep(0.05)
         url = f"https://www.scrapethissite.com/pages/forms/?page_num={pageNumber}"
         page = requests.get(url)
         if page.status_code != 200:
             raise Exception(f"Expected 200, got {page.status_code}")
-        soup = BeautifulSoup(page.content, "html.parser")
         print (page.status_code)
-        upsertCachedFile(pageNumber, soup)
-        return soup  
+        upsertCachedFile(pageNumber, page.content)
+        return page.content, 'request'
     
 
-#función para obtener el dataframe de una página
+#Obtener el dataframe del contenido
 def getDfFromPage (pageNumber, withFilter, minGoalDif):
-    table = getPageContent(pageNumber).find("table", class_="table")
+    pageContent, origin = getPageContent(pageNumber)
+    table = BeautifulSoup(pageContent,"html.parser").find("table", class_="table")
     #Puedo extraer todas las columnas
     columnNames = [th.get_text(strip=True) for th in table.find_all("th")]
     #O forzar las columnas sugeridas 
@@ -91,35 +84,50 @@ def getDfFromPage (pageNumber, withFilter, minGoalDif):
             continue
         values = [td.get_text(strip=True) for td in row.find_all("td", class_=["name","year","wins","losses",re.compile("diff")])]
         teams.append(values)  
-    return pd.DataFrame(teams, columns=columnNames) 
+    return pd.DataFrame(teams, columns=columnNames), origin
 
-#Función para obtener un dataframe obtenido de un rango de páginas
+#Obtener un dataframe de un rango de páginas
 def getDfFromPageRange (firstPage, lastPage, withFilter, minGoalDif):
     resultDf = pd.DataFrame()
     #try:
     for i in range(firstPage, lastPage + 1):
-        pageDf = getDfFromPage(i,withFilter,minGoalDif)
+        pageDf, origin = getDfFromPage(i,withFilter,minGoalDif)
         if resultDf.empty:
             resultDf = pageDf.copy()
         else:
             resultDf = pd.concat([resultDf, pageDf], ignore_index = True)
+        origin_list.append({
+            "Page": i,
+            "Origin": origin
+        })
     #except Exception:
         #print ("Rango inválido de páginas, prueba otros valores")
-    return resultDf
+    return resultDf, origin_list
 
-#def getCacheDetails(pageNum):
-    #return pageNum in cachedPageContent
+#Extra para borrar el cache y testear que funciona el sistema de cache
+def deleteCacheFolder():
+    folderPath = getCacheFolderPath()
+    print(f'a borrar {folderPath}')
+    if os.path.exists(folderPath):
+        st.write("Cache vaciado: ")
+        # First delete all files
+        for filename in os.listdir(folderPath):
+            file_path = os.path.join(folderPath, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+                st.write(f"{filename}")
+        # Then delete the folder itself
+        os.rmdir(folderPath)
+        print('vaciado')
+        
+    else:
+        print('no vaciado')
+        st.write("No se ha encontrado nada en cache")
 
-#def resetCache():
-    #cachedPageContent.clear()
+### CODIGO PARA INTERACTUAR CON LA APLICACIÓN EN STREAMLIT33
 
-tab1, tab2 = st.tabs(["Una página", "Rango de páginas (Extra)"])
+tab1, tab2, tab3= st.tabs(["Una página", "Rango de páginas (Extra)", "Vaciar Cache"])
 filterValue=''
-
-#def resetFilterOnePage():
-    #st.session_state.filterValueOnePage = ''
-#def resetFilterPageRange():
-    #st.session_state.filterValuePageRange = ''
 
 with tab1:
     st.header("Datos de una página")
@@ -133,24 +141,12 @@ with tab1:
     if st.button("Obtener",key='onePageButton'):
         fromCache = False
         #cacheData={'From Cache':getCacheDetails(pageNumber)}
-        df_onePag = getDfFromPage(pageNumber, filter, filterValue)
+        df_onePag, origin = getDfFromPage(pageNumber, filter, filterValue)
         st.write(f"Datos de los equipos ({df_onePag.shape[0]} filas)")
-        if fromCache:
-            st.write(f"Obenidos desde cache")
-        else:
-            st.write("Obtenido por request")
         print(df_onePag.shape)
         #df_onePag.head(10)
         st.dataframe(df_onePag)
-        #st.write("Cache details")
-        #col1, col2 = st.columns(2)
-        #with col1:
-            #pageIndex = [f"page {pageNumber}"]
-            #st.dataframe(pd.DataFrame(cacheData, index = [pageIndex]),use_container_width=False)
-       # with col2: 
-            #if st.button("Reset Cache",key="resetOnePage"):
-              #  resetCache()
-
+        st.write(f'La información fue obtenida desde {origin}')
 
 with tab2:
     st.header("Datos de un rango de páginas")
@@ -159,16 +155,15 @@ with tab2:
     filterValue = st.number_input('Introduce un mínimo de diferencia de goles para el filtro',key='filterValuePageRange',disabled=not filter, step=1)
     
     if st.button("Obtener",key='pageRangeButton'):
-        df_multiplePag = getDfFromPageRange(slider_range[0],slider_range[1], filter, filterValue)
+        df_multiplePag, origin_list = getDfFromPageRange(slider_range[0],slider_range[1], filter, filterValue)
         st.write(f"Datos obtenidos ({df_multiplePag.shape[0]} filas)")
         print(df_multiplePag.shape[0])
         #df_multiplePag.head(10)
         st.dataframe(df_multiplePag)
-    #if st.button("Reset",key="resetPageRange"):
-        #resetFilterPageRange()
+        df_origin = pd.DataFrame(origin_list)
+        st.write('La información fue obtenida desde:')
+        st.dataframe(df_origin,hide_index=True,use_container_width=False)
 
-
-    
-
-#else:
-    #st.write("¡Adios!")
+with tab3:
+    if st.button("Resetear Cache"):
+        deleteCacheFolder()
