@@ -6,6 +6,9 @@ import selenium
 import re
 import time
 import scipy
+import os.path
+import json
+
 
 st.set_page_config(
     page_title="Team Statistics",
@@ -17,12 +20,32 @@ st.title("Hola")
 st.header("Título")
 
 #Creo un diccionario con el nº de la página como clave y el contenido como valor
-cachedPageContent = {}
+#cachedPageContent = {}
 #función para obtener el contenido de la página de cache o via request
+def checkCachedFile(pageNumber):
+    if(os.path.isfile("CacheFile.json")):
+        with open("CacheFile.json","r") as cacheFile:
+            if (pageNumber in cacheFile):  
+                #cachedPageContent = cacheFile[pageNumber]
+                return cacheFile[pageNumber]
+            else:
+                return ''
+    else:
+        return ''
+
+def upsertCachedFile (pageNumber, soup):
+    with open("CacheFile.json", "a") as cacheFile:
+        print('en upsert')
+        tempDict = {pageNumber:str(soup)}
+        #json.dump ({str(pageNumber):str(soup)} , cacheFile)
+        json.dump (tempDict , cacheFile)
+        #cacheFile.write(json.dump({pageNumber:soup})
+
 def getPageContent (pageNumber):
-    if pageNumber in cachedPageContent:
+    cachedContent = checkCachedFile(pageNumber)
+    if cachedContent!= '':
         print(f"pag {pageNumber} obtenida desde cache")
-        return cachedPageContent[pageNumber]
+        return cachedContent
     else:  
         time.sleep(0.05)
         url = f"https://www.scrapethissite.com/pages/forms/?page_num={pageNumber}"
@@ -30,7 +53,8 @@ def getPageContent (pageNumber):
         if page.status_code != 200:
             raise Exception(f"Expected 200, got {page.status_code}")
         soup = BeautifulSoup(page.content, "html.parser")
-        cachedPageContent[pageNumber] = soup
+        print (page.status_code)
+        upsertCachedFile( pageNumber, soup)
         return soup  
     
 
@@ -68,11 +92,11 @@ def getDfFromPageRange (firstPage, lastPage, withFilter, minGoalDif):
         #print ("Rango inválido de páginas, prueba otros valores")
     return resultDf
 
-def getCacheDetails(pageNum):
-    return pageNum in cachedPageContent
+#def getCacheDetails(pageNum):
+    #return pageNum in cachedPageContent
 
-def resetCache():
-    cachedPageContent.clear()
+#def resetCache():
+    #cachedPageContent.clear()
 
 tab1, tab2 = st.tabs(["Una página", "Rango de páginas (Extra)"])
 filterValue=''
@@ -92,20 +116,20 @@ with tab1:
     filterValue = placeholderFilter1.number_input('Introduce un mínimo de diferencia de goles para el filtro',key='filterValueOnePage',disabled=not filter, step=1,)
    
     if st.button("Obtener",key='onePageButton'):
-        cacheData={'From Cache':getCacheDetails(pageNumber)}
+        #cacheData={'From Cache':getCacheDetails(pageNumber)}
         df_onePag = getDfFromPage(pageNumber, filter, filterValue)
         st.write(f"Datos obtenidos ({df_onePag.shape[0]} filas)")
         print(df_onePag.shape)
         #df_onePag.head(10)
         st.dataframe(df_onePag)
-        st.write("Cache details")
-        col1, col2 = st.columns(2)
-        with col1:
-            pageIndex = [f"page {pageNumber}"]
-            st.dataframe(pd.DataFrame(cacheData, index = [pageIndex]),use_container_width=False)
-        with col2: 
-            if st.button("Reset Cache",key="resetOnePage"):
-                resetCache()
+        #st.write("Cache details")
+        #col1, col2 = st.columns(2)
+        #with col1:
+            #pageIndex = [f"page {pageNumber}"]
+            #st.dataframe(pd.DataFrame(cacheData, index = [pageIndex]),use_container_width=False)
+       # with col2: 
+            #if st.button("Reset Cache",key="resetOnePage"):
+              #  resetCache()
 
 
 with tab2:
