@@ -8,6 +8,7 @@ import time
 # import scipy
 # import os
 # import json
+import selenium 
 
 from RetoExtraSites.CasaDelLibro import getPrice_casaDelLibro
 
