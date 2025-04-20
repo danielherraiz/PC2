@@ -1,13 +1,13 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+# import requests
+# from bs4 import BeautifulSoup
 import pandas as pd
-import selenium
-import re
+# import selenium
+# import re
 import time
-import scipy
-import os
-import json
+# import scipy
+# import os
+# import json
 
 from RetoExtraSites.CasaDelLibro import getPrice_casaDelLibro
 
@@ -159,7 +159,7 @@ def getBookResults(query):
     driver.close()
 
 
-    from bs4 import BeautifulSoup
+    # from bs4 import BeautifulSoup
 
 # from urllib.parse import urljoin
 
