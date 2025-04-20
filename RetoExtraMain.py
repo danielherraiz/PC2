@@ -1,6 +1,8 @@
+
+
 import streamlit as st
-# import requests
-# from bs4 import BeautifulSoup
+import requests
+from bs4 import BeautifulSoup
 import pandas as pd
 # import selenium
 # import re
@@ -128,7 +130,8 @@ def getBookResults(query):
             print(f"Error parsing book: {e}")
 
     # --- PRINT RESULTS ---
-    df1 = pd.DataFrame(books)
+    driver.close()
+    return books
     # df1['Image'] = df1['Image URL'].apply(lambda x: f'<img src="{x}" width="60">')  # Adjust image size as needed
     # df1['Link'] = df1['Book URL'].apply(lambda x: f'<a href="{x}" target="_blank">View Book</a>')
 
@@ -138,29 +141,74 @@ def getBookResults(query):
 
     # st.write(df1.to_html(escape=False, index=False), unsafe_allow_html=True)
     # st.dataframe(df1)
-    st.data_editor(
-        df1,
-        use_container_width=True,
-        column_config={
-            "Image url": st.column_config.ImageColumn(
-                "Cubierta", 
-                width="small"
-            ),
-            "Link url": st.column_config.LinkColumn(
-                "Enlace", 
-                display_text=r"https://www.(.*?)\.com"
-            ),
-            "Detail": st.column_config.TextColumn("Detalle"),
-            "Original Price": st.column_config.TextColumn("Precio original"),
-            "Current Price": st.column_config.TextColumn("Precio final"),
-            "Author": st.column_config.TextColumn("Autor"),
-            "Title": st.column_config.TextColumn("Título")
-        }
-    )
-    driver.close()
+
 
 
     # from bs4 import BeautifulSoup
+def getBookResults2(query):
+    books = []
+    queryUrl = query.strip().replace(" ","+")
+    url = f"https://www.libreriacentral.com/SearchResults.aspx?st={queryUrl}&cId=0&sm=qck"
+    page = requests.get(url)
+    soup = BeautifulSoup(page.content,"html.parser")
+    results = soup.find_all("div",class_="products-preview-list-item")
+    i = 0
+    for result in results:
+        i+=1
+        print(i)
+        try:
+            #In stock? 
+            availability = result.find("span", class_='css-disponible')
+            if availability and result.find("span", class_='css-disponible').get_text().strip() == "Disponible":
+
+                # Title
+                name_element = result.find(attrs={"itemprop": "name"})
+                title = name_element.get_text().strip()
+                print(title)
+
+                #Author
+                author = result.find("meta", attrs={"itemprop": "author"})['content'].strip()
+                print(author)
+                detail = 'N/A'
+
+                # Price 
+                try:
+                    price_substrings = result.find("div", class_="precio").find_all("span")
+                    current_price = price_substrings[0].get_text().strip() +' '+price_substrings[1].get_text().strip()
+                    if len(price_substrings) > 2:
+                        original_price = price_substrings[2].get_text().strip() +' '+price_substrings[1].get_text().strip()
+                    else:
+                        original_price = current_price
+                except e:
+                    current_price = "N/A"
+                    original_price = "N/A"
+                print(current_price)
+                # Image
+                try:
+                    img_url = result.find("img", class_='foto')['src']
+                except e:
+                    img_url = "N/A"
+
+                #Link
+                try:
+                    link = result.find("a", attrs={"itemprop": "url"})["href"].strip()
+                    print(link)
+                except:
+                    link = "N/A"
+
+                books.append({
+                    "Title": title,
+                    "Author": author,
+                    "Detail": detail,
+                    "Original Price": original_price,
+                    "Current Price": current_price,
+                    "Image url": img_url,
+                    "Link url": link
+                })
+        except Exception as e:
+            print(f"Error al obtener resultados: {e}")
+    return books
+
 
 # from urllib.parse import urljoin
 
@@ -225,7 +273,31 @@ if st.button("🔍 Buscar"):
     if query.strip():
         with st.spinner("Buscando libros..."):
             try:
-                results = getBookResults(query)
+                bookFinalList = []
+                booklist1=getBookResults(query)
+                booklist2=getBookResults2(query)
+                bookFinalList.extend(booklist1)
+                bookFinalList.extend(booklist2)
+                
+                st.data_editor(
+                    pd.DataFrame(bookFinalList),
+                    use_container_width=True,
+                    column_config={
+                        "Image url": st.column_config.ImageColumn(
+                            "Cubierta", 
+                            width="small"
+                        ),
+                        "Link url": st.column_config.LinkColumn(
+                            "Enlace", 
+                            display_text=r"https://www.(.*?)\.com"
+                        ),
+                        "Detail": st.column_config.TextColumn("Detalle"),
+                        "Original Price": st.column_config.TextColumn("Precio original"),
+                        "Current Price": st.column_config.TextColumn("Precio final"),
+                        "Author": st.column_config.TextColumn("Autor"),
+                        "Title": st.column_config.TextColumn("Título")
+                    }
+                )
             except Exception as e:
                 st.error(f"An error occurred: {e}")
     else:

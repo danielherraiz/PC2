@@ -2,3 +2,4 @@ cached_pages/
 
 *.html
 *.pyc
+*cache.txt
