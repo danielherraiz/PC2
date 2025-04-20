@@ -21,8 +21,8 @@ st.set_page_config(
 st.title("PC2 Reto Extra")
 st.header("Daniel Herraiz")
 
-st.subheader("Casa Del Libro")
-st.write(getPrice_casaDelLibro())
+# st.subheader("Casa Del Libro")
+# st.write(getPrice_casaDelLibro())
 
 
 from selenium import webdriver
@@ -158,6 +158,66 @@ def getBookResults(query):
     )
     driver.close()
 
+
+    from bs4 import BeautifulSoup
+
+# from urllib.parse import urljoin
+
+# # def getLibreriaCentralResults():
+#     isbn2 = '9788478884452'
+#     url = f"https://www.casadellibro.com/?query={isbn}"
+#     print(url)
+#     page = requests.get(url)
+#     soup = BeautifulSoup(html, 'html.parser')
+#     results = []
+
+#     # Each book is within a Product schema tag
+#     products = soup.find_all('div', itemtype="http://schema.org/Product")
+
+#     for product in products:
+#         title = product.find(itemprop="name")
+#         author_meta = product.find('meta', itemprop="author")
+#         price = product.find('span', itemprop="price")
+#         currency = product.find('span', itemprop="priceCurrency")
+#         image = product.find('img', itemprop="image")
+#         isbn = product.find('meta', itemprop="isbn")
+#         url = product.find('a', itemprop="url")
+#         availability = product.find('link', itemprop="availability")
+
+#         data = {
+#             'title': title.get_text(strip=True) if title else None,
+#             'author': author_meta['content'].strip() if author_meta else None,
+#             'price': price.get_text(strip=True) if price else None,
+#             'currency': currency['content'].strip() if currency else None,
+#             'image_url': urljoin(base_url, image['src']) if image else None,
+#             'isbn': isbn['content'].strip() if isbn else None,
+#             'product_url': urljoin(base_url, url['href']) if url else None,
+#             'availability': availability['href'].split('/')[-1] if availability else None
+#         }
+
+#         results.append(data)
+
+#     return results
+#     st.data_editor(
+#         df1,
+#         use_container_width=True,
+#         column_config={
+#             "Image url": st.column_config.ImageColumn(
+#                 "Cubierta", 
+#                 width="small"
+#             ),
+#             "Link url": st.column_config.LinkColumn(
+#                 "Enlace", 
+#                 display_text=r"https://www.(.*?)\.com"
+#             ),
+#             "Detail": st.column_config.TextColumn("Detalle"),
+#             "Original Price": st.column_config.TextColumn("Precio original"),
+#             "Current Price": st.column_config.TextColumn("Precio final"),
+#             "Author": st.column_config.TextColumn("Autor"),
+#             "Title": st.column_config.TextColumn("Título")
+#         }
+#     )
+#     driver.close()
 
 query = st.text_input("Introducir ISBN, título, genero, autor:", "")
 if st.button("🔍 Buscar"):
