@@ -8,9 +8,9 @@ import time
 # import scipy
 # import os
 # import json
-import selenium 
 
-from RetoExtraSites.CasaDelLibro import getPrice_casaDelLibro
+
+# from RetoExtraSites.CasaDelLibro import getPrice_casaDelLibro
 
 st.set_page_config(
     page_title="Price Comparer",
