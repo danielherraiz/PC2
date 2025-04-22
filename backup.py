@@ -48,6 +48,30 @@ options = Options()
 #hide firefox window
 # os.environ['MOZ_HEADLESS'] = '1'
 
+def add_increment_column(df):
+    if df.empty:
+        df["Increment"] = []
+        return df
+
+    # Clean and convert 'Current Price' to float
+    df["Current Price"] = (
+        df["Current Price"]
+        .astype(str)
+        .str.replace(r"[^\d.,]", "", regex=True)  # Remove currency symbols or other chars
+        .str.replace(",", ".")                    # Handle decimal commas 
+        .astype(float)
+    )
+
+    min_price = df["Current Price"].min()
+
+    df["Increment"] = ((df["Current Price"] - min_price) / min_price * 100).round(2).astype(str) + " %"
+    
+    # Back to string + € / %
+    # df["Increment"] = df["Increment"].astype(str) + " %"
+    df["Current Price"] = df["Current Price"].round(2).astype(str) + " €"
+    
+    return df
+
 def getBookResults(query, bookLimit):
     driver = webdriver.Firefox(service=service, options=options)
     url = "https://www.casadellibro.com"
@@ -115,7 +139,11 @@ def getBookResults(query, bookLimit):
     results = shadow_root1.find_elements(By.CSS_SELECTOR, "li.x-base-grid__item")
     books = []
     bookDf = pd.DataFrame()
+    i=0
     for result in results:
+        if i == bookLimit:
+            break
+        i+=1
         try:
             article = result.find_element(By.CSS_SELECTOR, "article")
             
@@ -173,7 +201,8 @@ def getBookResults(query, bookLimit):
                 "Original Price": original_price,
                 "Current Price": current_price,
                 "Image url": img_url,
-                "Link url": link
+                "Link url": link,
+                "Store": "Casa del libro"
             })
             print(len(books))
             bookDf = pd.DataFrame(books)
@@ -181,7 +210,7 @@ def getBookResults(query, bookLimit):
             print(f"Error al obtener resultados de {url} : {e}")
     driver.close()
     # return bookDf.truncate(after=bookLimit)
-    print(f'tienda 1 size: {bookDf.size}')
+    print(f'tienda 1 size: {bookDf.shape[0]}')
     return bookDf
 
 def getBookResults2(query, bookLimit):
@@ -245,14 +274,15 @@ def getBookResults2(query, bookLimit):
                     "Original Price": original_price,
                     "Current Price": current_price,
                     "Image url": img_url,
-                    "Link url": link
+                    "Link url": link,
+                    "Store": "Librería central"
                 })
                 print(len(books))
                 bookDf = pd.DataFrame(books)
         except Exception as e:
             print(f"Error al obtener resultados de {baseUrl} : {e}")
     # return bookDf.truncate(after=bookLimit)
-    print(f'tienda 2 size: {bookDf.size}')
+    print(f'tienda 2 size: {bookDf.shape[0]}')
     return bookDf
 
 # def getBookResults3(query, bookLimit):
@@ -324,6 +354,7 @@ def getBookResults2(query, bookLimit):
 
 
 def drawDfTable(inputDf,dfkey):
+
     st.data_editor(
         inputDf,
         use_container_width=True,
@@ -341,8 +372,11 @@ def drawDfTable(inputDf,dfkey):
             "Original Price": st.column_config.TextColumn("Precio original"),
             "Current Price": st.column_config.TextColumn("Precio final"),
             "Author": st.column_config.TextColumn("Autor"),
-            "Title": st.column_config.TextColumn("Título")
+            "Title": st.column_config.TextColumn("Título"),
+            "Increment" : st.column_config.TextColumn("Incremento %"),
+            
         },
+        # column_order=['Título','Autor','Detalle','Precio original','Precio final','Increment','Cubierta','Enlace'],
         key=dfkey
         # hide_index=True
     )
@@ -354,7 +388,7 @@ def getSortedResults(fetch_func, query, bookLimit):
     return df
 
 def obtenerResultados(query, bookLimit):
-    
+
     if query.strip():
         print('INICIO____________________________________________________________________')
         with st.spinner("Buscando libros..."):
@@ -364,19 +398,32 @@ def obtenerResultados(query, bookLimit):
                 dfs = [getSortedResults(f, query, bookLimit) for f in fetchFuncs]
                 if not dfs:
                     st.warning("No results found.")
-                elif len(dfs) == 1 or all(df.shape[0] <= 1 for df in dfs):
-                    # If 0 or 1 result per store, draw only one table
-                    drawDfTable(pd.concat(dfs, ignore_index=True), 'All Results')
                 else:
+                    # If 0 or 1 result per store, draw only one table
                     # Draw reduced table with first result from each store
-                    reducedBookDf = pd.concat([df.iloc[[0]] for df in dfs if not df.empty], ignore_index=True)
+                    # reducedBookDf = pd.concat([df.iloc[[0]] for df in dfs if not df.empty], ignore_index=True)
+                    reducedBookDf = add_increment_column(pd.concat([df.iloc[[0]] for df in dfs if not df.empty], ignore_index=True))
+                    st.markdown("#### 📘 Los resultados más baratos de cada tienda:")
                     drawDfTable(reducedBookDf, 'Reduced')
                     
-                    # Draw expanded table with the rest (up to bookLimit)
-                    expandedDfs = [df.iloc[1:bookLimit] for df in dfs if df.shape[0] > 1]
-                    if expandedDfs:
-                        bookDf = pd.concat(expandedDfs, ignore_index=True).sort_values(by='Current Price', ignore_index=True)
-                        drawDfTable(bookDf, 'Expanded')
+                    # Show summary
+                    
+                    st.markdown("*Resumen de resultados por tienda:*")
+                    for df in dfs:
+                        
+                        if not df.empty:
+                            store_name = df['Store'].iloc[0]
+                            st.write(f"  - {store_name}: {len(df)} resultados")
+
+                    # if len(dfs) > 2 or any(df.shape[0] > 1 for df in dfs):
+                    if any(df.shape[0] > 1 for df in dfs) and bookLimit > 1:
+                        # Draw expanded table with the rest (up to bookLimit)
+                        expandedDfs = [df.iloc[1:bookLimit] for df in dfs if df.shape[0] > 1]
+                        if expandedDfs:
+                            st.markdown("#### 📚 Resultados adicionales por tienda:")
+                            # bookDf = pd.concat(expandedDfs, ignore_index=True).sort_values(by='Current Price', ignore_index=True)
+                            bookDf = pd.concat(expandedDfs, ignore_index=True).sort_values(by='Current Price', ignore_index=True)
+                            drawDfTable(bookDf, 'Expanded')
             except Exception as e:
                 st.error(f"An error occurred: {e}")
         print('FIN____________________________________________________________________')
