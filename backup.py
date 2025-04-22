@@ -53,17 +53,16 @@ def getBookResults(query, bookLimit):
     url = "https://www.casadellibro.com"
     driver.get(url)
 
-    time.sleep(3)  # Wait for dynamic content to load
+    time.sleep(2)  # Wait for dynamic content to load
     acceptCookies = driver.find_element(By.XPATH, '//*[@id="onetrust-accept-btn-handler"]')
     acceptCookies.click()
-
     time.sleep(1) 
 
     search = driver.find_element(By.XPATH, "//input[@id='empathy-search']")
     search.send_keys(query)
 
-    time.sleep(2) 
-
+    time.sleep(1) 
+    
     # --- EXPAND SHADOW DOM ROOT ---
     def expand_shadow_element(element):
         shadow_root = driver.execute_script("return arguments[0].shadowRoot", element)
@@ -72,7 +71,47 @@ def getBookResults(query, bookLimit):
     root1 = driver.find_element(By.XPATH, "//div[@class='x-root-container']")
     shadow_root1 = expand_shadow_element(root1)
 
+    # Interact with right side panel ('Ordenar por)
+    # Open right side panel 
+    rightPanel = shadow_root1.find_element(By.CSS_SELECTOR, 'button[data-test="toggle-facets-button"]')
+    rightPanel.click()
+    time.sleep(0.2)
+    # Sort 
+    sortButton = shadow_root1.find_element(By.CSS_SELECTOR, 'div[data-test="sort"]')
+    sortButton.click()
+    time.sleep(0.2)
+    for checkbox in sortButton.find_elements(By.CSS_SELECTOR, 'button[data-test="sort-picker-button"]'):
+        if checkbox.text == 'Precio: De menor a mayor':
+            checkbox.click()
+    time.sleep(2)
+    # Availability dropdown
+    # availability = shadow_root1.find_element(By.CSS_SELECTOR, 'div[data-test="availability"]')
+    try:
+        availability = shadow_root1.find_element(By.CSS_SELECTOR, 'div[data-test="availability"]')
+        
+        availability.click()
+        time.sleep(1.5)
+        # Look for "available" checkbox and click it (the checkbox order changes with the query)
+        for checkbox in availability.find_elements(By.CSS_SELECTOR, 'button[data-test="filter"]'):
+            print(checkbox.text)
+            if 'disponible' in checkbox.text:
+                checkbox.click()
+                print('click')
+                break
+        time.sleep(1.5)
+    except NoSuchElementException:
+        print('Filtro de disponibilidad no encontrado')
+         
     # --- FIND ALL BOOK RESULT CARDS ---
+    ###########################
+    #     # --- EXPAND SHADOW DOM ROOT ---
+    # def expand_shadow_element(element):
+    #     shadow_root = driver.execute_script("return arguments[0].shadowRoot", element)
+    #     return shadow_root
+
+    # root1 = driver.find_element(By.XPATH, "//div[@class='x-root-container']")
+    # shadow_root1 = expand_shadow_element(root1)
+    # ##########################
     results = shadow_root1.find_elements(By.CSS_SELECTOR, "li.x-base-grid__item")
     books = []
     bookDf = pd.DataFrame()
@@ -143,7 +182,7 @@ def getBookResults(query, bookLimit):
     driver.close()
     # return bookDf.truncate(after=bookLimit)
     print(f'tienda 1 size: {bookDf.size}')
-    return bookDf.sort_values(by=['Current Price'],ignore_index=True)
+    return bookDf
 
 def getBookResults2(query, bookLimit):
     books = []
@@ -214,7 +253,8 @@ def getBookResults2(query, bookLimit):
             print(f"Error al obtener resultados de {baseUrl} : {e}")
     # return bookDf.truncate(after=bookLimit)
     print(f'tienda 2 size: {bookDf.size}')
-    return bookDf.sort_values(by=['Current Price'],ignore_index=True)
+    return bookDf
+
 # def getBookResults3(query, bookLimit):
 #     books = []
 #     baseUrl = 'https://www.iberlibro.com/'
@@ -306,28 +346,37 @@ def drawDfTable(inputDf,dfkey):
         key=dfkey
         # hide_index=True
     )
+
+def getSortedResults(fetch_func, query, bookLimit):
+    df = fetch_func(query, bookLimit)
+    if not df.empty and 'Current Price' in df.columns:
+        return df.sort_values(by='Current Price', ignore_index=True)
+    return df
+
+def obtenerResultados(query, bookLimit):
     
-def obtenerResultados(query):
     if query.strip():
         print('INICIO____________________________________________________________________')
         with st.spinner("Buscando libros..."):
             try:
-                df1=getBookResults(query,bookLimit)
-                df2=getBookResults2(query,bookLimit)
-                print(df1)
-                print(df2)
-                print('shapes')
-                print(df1.shape[0]+df2.shape[0])
-                # bookDf = pd.concat([df1.truncate(after=bookLimit-1),df2.truncate(after=bookLimit-1)], ignore_index=True)
-                #reducedBookDf = pd.concat([df1.iloc[0],df2.iloc[0]], axis=1).reset_index()
-                reducedBookDf = pd.concat([df1.iloc[[0]], df2.iloc[[0]]], axis=0).reset_index(drop=True)
-                drawDfTable(reducedBookDf,'Reduced')
-                # print(df1.shape[0]+df2.shape[0])
-                # if (bookLimit>1) and (df1.shape[0]>1 or df2.shape[0]>1):
-                if (bookLimit>1 and (df1.shape[0]+df2.shape[0]>2)):
-                    bookDf = pd.concat([df1.truncate(before=1,after=bookLimit-1),df2.truncate(before=1,after=bookLimit-1)], ignore_index=True)
-                    drawDfTable(bookDf.sort_values(by=['Current Price'],ignore_index=True),'Expanded')
-                
+                #Lista de funciones por cada tienda
+                fetchFuncs = [getBookResults, getBookResults2]
+                dfs = [getSortedResults(f, query, bookLimit) for f in fetchFuncs]
+                if not dfs:
+                    st.warning("No results found.")
+                elif len(dfs) == 1 or all(df.shape[0] <= 1 for df in dfs):
+                    # If 0 or 1 result per store, draw only one table
+                    drawDfTable(pd.concat(dfs, ignore_index=True), 'All Results')
+                else:
+                    # Draw reduced table with first result from each store
+                    reducedBookDf = pd.concat([df.iloc[[0]] for df in dfs if not df.empty], ignore_index=True)
+                    drawDfTable(reducedBookDf, 'Reduced')
+                    
+                    # Draw expanded table with the rest (up to bookLimit)
+                    expandedDfs = [df.iloc[1:bookLimit] for df in dfs if df.shape[0] > 1]
+                    if expandedDfs:
+                        bookDf = pd.concat(expandedDfs, ignore_index=True).sort_values(by='Current Price', ignore_index=True)
+                        drawDfTable(bookDf, 'Expanded')
             except Exception as e:
                 st.error(f"An error occurred: {e}")
         print('FIN____________________________________________________________________')
@@ -348,7 +397,7 @@ if placeholderButton.button("🔍 Buscar"):
 
     # Print the current time
     print("Current Time:", current_time)
-    obtenerResultados(query)
+    obtenerResultados(query, bookLimit)
 
 
 
