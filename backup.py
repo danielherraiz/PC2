@@ -1,7 +1,7 @@
 from datetime import datetime
 import streamlit as st
 import pandas as pd
-from RetoExtraUtils import getResults, sortResults, getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, add_increment_column 
+from RetoExtraUtils import getResults, sortResults, getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon, add_increment_column 
 
 st.set_page_config(
     page_title="Price Comparer",
@@ -27,7 +27,7 @@ def drawDfTable(inputDf,dfkey):
             ),
             "Enlace": st.column_config.LinkColumn(
                 "Enlace", 
-                display_text=r"https://www.(.*?)\.com"
+                display_text = r"https://www\.(.*?)\.(com|es)"
             ),
             
         }, 
@@ -35,24 +35,30 @@ def drawDfTable(inputDf,dfkey):
         # hide_index=True
     )
 
-def showResults(query, bookLimit):
+def showResults(query, bookLimit, ebook):
 
     if query.strip():
         with st.spinner("Buscando libros..."):
             try:
                 #Function list for each store
-                fetchFuncs = [getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro]
-                dfs = [getResults(f, query, bookLimit) for f in fetchFuncs]
-                if not dfs:
+                fetchFuncs = [getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon]
+                # fetchFuncs = [getBooksAmazon]
+                
+                dfs = [getResults(f, query, bookLimit, ebook) for f in fetchFuncs]
+
+                # if len(dfs) == 0:
+                if all(df.empty for df in dfs):
+                    print()
                     st.warning("No results found.")
+                    return
                 else:
 
                     # Draw reduced table with first result from each store
-                    reducedBookDf = pd.concat([df.iloc[[0]] for df in dfs if not df.empty], ignore_index=True)
-                    reducedBookDf = sortResults(reducedBookDf)
-                    reducedBookDf, minprice = add_increment_column(reducedBookDf, -1)
+                    reducedDf = pd.concat([df.iloc[[0]] for df in dfs if not df.empty], ignore_index=True)
+                    reducedDf = sortResults(reducedDf)
+                    reducedDf, minprice = add_increment_column(reducedDf, -1)
                     st.markdown("#### 📘 Los resultados más baratos de cada tienda:")
-                    drawDfTable(reducedBookDf.sort_values(by='Precio final', ignore_index=True), 'Reduced')
+                    drawDfTable(reducedDf, 'Reduced')
                     
                     # Show summary
                     st.markdown("*Resumen de resultados por tienda:*")
@@ -80,14 +86,15 @@ with col1:
     query = st.text_input("Introducir ISBN, título, genero, autor:", "")
     placeholderButton = st.empty()
     
+    
 with col2:
     bookLimit = st.number_input("Introducir máximo de libros por tienda (max 20)", min_value=1, max_value=20)
-
+    ebook = st.checkbox("Descartar e-books y audiolibros", value=False)
 if placeholderButton.button("🔍 Buscar"):
     # Get the current time
     current_time = datetime.now().time()
     print("Current Time:", current_time)
-
-    showResults(query, bookLimit)
+    
+    showResults(query, bookLimit, ebook)
     placeholderexception = st.empty()
 
