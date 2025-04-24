@@ -85,7 +85,7 @@ def getBooksCasaLibro(query, bookLimit, ebook):
     except (NoSuchElementException , TimeoutException) as e:
         print(e.args)
     
-    time.sleep(1)
+    time.sleep(0.5)
     shadow_root = driver.execute_script("return arguments[0].shadowRoot", root1)
     results = shadow_root.find_elements(By.CSS_SELECTOR, "li.x-base-grid__item")
     time.sleep(0.5)
@@ -113,35 +113,62 @@ def getBooksCasaLibro(query, bookLimit, ebook):
                 print(e.args)
                 detail = "N/A"
 
-           
-            #Link
+            # Image
+            try:
+                img_elem = article.find_element(By.CSS_SELECTOR, 'img[data-test="result-picture-image"]')
+                img_url = img_elem.get_attribute("src")
+            except (NoSuchElementException , TimeoutException) as e:
+                print(e.args)
+                img_url = "N/A"
+
+            #The web was updated and stopped showing prices in the search results, I need to go into the item page
+            #to get the price 
             try:
                 link_el = article.find_element(By.CSS_SELECTOR, 'a[data-test="result-link"]')
                 link = link_el.get_attribute("href")
                 print(link)
+                driver.get(link)
+                time.sleep(0.5)
+                current_price = driver.find_element(By.XPATH, "//*[@id='p-pf-f' or @id='p-pmkt-f']").text
+                try:
+                    original_price = driver.find_element(By.CSS_SELECTOR, 'p[class="s-5-text"]').text.split('€')[0]
+                    print(original_price)
+                except:  
+                    original_price = current_price
             except:
                 link = "N/A"
+                continue
+
+            #Previous version
+            #Link
+            # try:
+            #     link_el = article.find_element(By.CSS_SELECTOR, 'a[data-test="result-link"]')
+            #     link = link_el.get_attribute("href")
+            #     print(link)
+            # except:
+            #     link = "N/A"
                 
             # Price (Current)
             
-            try:
-                price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-current-price"]')
-                current_price = price_elem.text.strip()
-                if not current_price:
-                    print('Exception price empty 1')
-                    continue
-            except (NoSuchElementException , TimeoutException) as e:
-                print(e.args)
-                print('Exception no price found 1')
-                continue
+            # try:
+            #     price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-current-price"]')
+            #     current_price = price_elem.text.strip()
+            #     if not current_price:
+            #         print('Exception price empty 1')
+            #         continue
+            # except (NoSuchElementException , TimeoutException) as e:
+            #     print(e.args)
+            #     print('Exception no price found 1')
+                
+            #     continue
 
-            # Price (original)
-            try:
-                original_price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-previous-price"]')
-                original_price = original_price_elem.text.strip()
-            except (NoSuchElementException , TimeoutException) as e:
-                print(e.args)
-                original_price = current_price
+            # # Price (original)
+            # try:
+            #     original_price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-previous-price"]')
+            #     original_price = original_price_elem.text.strip()
+            # except (NoSuchElementException , TimeoutException) as e:
+            #     print(e.args)
+            #     original_price = current_price
 
  
                 
