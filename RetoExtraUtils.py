@@ -121,57 +121,36 @@ def getBooksCasaLibro(query, bookLimit, ebook):
                 print(e.args)
                 img_url = "N/A"
 
-            #The web was updated and stopped showing prices in the search results, I need to go into the item page
-            #to get the price 
+            #Previous version
+            #Link
             try:
                 link_el = article.find_element(By.CSS_SELECTOR, 'a[data-test="result-link"]')
                 link = link_el.get_attribute("href")
                 print(link)
-                driver.get(link)
-                time.sleep(0.5)
-                current_price = driver.find_element(By.XPATH, "//*[@id='p-pf-f' or @id='p-pmkt-f']").text
-                try:
-                    original_price = driver.find_element(By.CSS_SELECTOR, 'p[class="s-5-text"]').text.split('€')[0]
-                    print(original_price)
-                except:  
-                    original_price = current_price
             except:
                 link = "N/A"
-                continue
-
-            #Previous version
-            #Link
-            # try:
-            #     link_el = article.find_element(By.CSS_SELECTOR, 'a[data-test="result-link"]')
-            #     link = link_el.get_attribute("href")
-            #     print(link)
-            # except:
-            #     link = "N/A"
                 
             # Price (Current)
             
-            # try:
-            #     price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-current-price"]')
-            #     current_price = price_elem.text.strip()
-            #     if not current_price:
-            #         print('Exception price empty 1')
-            #         continue
-            # except (NoSuchElementException , TimeoutException) as e:
-            #     print(e.args)
-            #     print('Exception no price found 1')
+            try:
+                price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-current-price"]')
+                current_price = price_elem.text.strip()
+                if not current_price:
+                    print('Exception price empty 1')
+                    continue
+            except (NoSuchElementException , TimeoutException) as e:
+                print(e.args)
+                print('Exception no price found 1')
                 
-            #     continue
+                continue
 
             # # Price (original)
-            # try:
-            #     original_price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-previous-price"]')
-            #     original_price = original_price_elem.text.strip()
-            # except (NoSuchElementException , TimeoutException) as e:
-            #     print(e.args)
-            #     original_price = current_price
-
- 
-                
+            try:
+                original_price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-previous-price"]')
+                original_price = original_price_elem.text.strip()
+            except (NoSuchElementException , TimeoutException) as e:
+                print(e.args)
+                original_price = current_price
 
             books.append({
                 "Título": title,
@@ -483,6 +462,7 @@ def getBooksAmazon(query, bookLimit, ebook):
     return bookDf
     
 
+
 ## FUNCTIONS FOR DATA MANIPULATION ##
 
 def add_increment_column(df, min_price):
@@ -515,7 +495,6 @@ def sortResults(df):
     else:
         print('no sorted')
         return df
-    
 
 def getResults(fetch_func, query, bookLimit, ebook):
     df = fetch_func(query, bookLimit, ebook)
