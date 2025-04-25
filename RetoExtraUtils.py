@@ -646,9 +646,31 @@ def sortResults(df):
         print('no sorted')
         return df
 
-def getResults(fetch_func, query, bookLimit, ebook, itemCondition):
-    df = fetch_func(query, bookLimit, ebook, itemCondition)
-    return sortResults(df)
+def getResults(query, bookLimit, ebook, itemCondition, storeDic):
+    # Mapping keys from the dictionary to their corresponding functions
+    store_functions = {
+        'include_casalibro': getBooksCasaLibro,
+        'include_libcentral': getBooksLibCentral,
+        'include_iberlibro': getBooksIberLibro,
+        'include_amazon': getBooksAmazon,
+        'include_ebay': getBooksEbay,
+        'include_corteingles': getBooksCorteIngles
+    }
+
+    results = []
+
+
+    for key, fetch_func in store_functions.items():
+        if storeDic.get(key):  # Only call if checkbox is selected
+            try:
+                df = fetch_func(query, bookLimit, ebook, itemCondition)
+                df = sortResults(df)  # Optional: sorting step
+                results.append(df)
+            except Exception as e:
+                st.warning(f"Error fetching results from {key}: {e}")
+
+    return results  # This is a list of DataFrames
+
 
 def split_title_and_details(title):
     # Find all text inside parentheses
