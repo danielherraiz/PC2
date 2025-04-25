@@ -1,7 +1,7 @@
 from datetime import datetime
 import streamlit as st
 import pandas as pd
-from RetoExtraUtils import getResults, sortResults, getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon, add_increment_column 
+from RetoExtraUtils import getResults, sortResults, getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon, getBooksEbay, add_increment_column 
 
 st.set_page_config(
     page_title="Price Comparer",
@@ -18,7 +18,7 @@ def drawDfTable(inputDf,dfkey):
     st.data_editor(
         inputDf,
         use_container_width=True,
-        column_order=['Título','Autor','Detalle','Precio base','Precio final','Incremento %','Cubierta','Enlace'],
+        column_order=['Título','Autor','Comentarios','Precio base','Precio final','Incremento %','Cubierta','Enlace'],
         column_config={
             "Cubierta": st.column_config.ImageColumn(
                 "Cubierta", 
@@ -35,16 +35,16 @@ def drawDfTable(inputDf,dfkey):
         # hide_index=True
     )
 
-def showResults(query, bookLimit, ebook):
+def showResults(query, bookLimit, ebook, itemCondition):
 
     if query.strip():
         with st.spinner("Buscando libros..."):
             try:
                 #Function list for each store
-                fetchFuncs = [getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon]
-                # fetchFuncs = [getBooksAmazon]
+                fetchFuncs = [getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon, getBooksEbay]
+                # fetchFuncs = [getBooksEbay]
                 
-                dfs = [getResults(f, query, bookLimit, ebook) for f in fetchFuncs]
+                dfs = [getResults(f, query, bookLimit, ebook, itemCondition) for f in fetchFuncs]
 
                 # if len(dfs) == 0:
                 if all(df.empty for df in dfs):
@@ -88,13 +88,18 @@ with col1:
     
     
 with col2:
-    bookLimit = st.number_input("Introducir máximo de libros por tienda (max 20)", min_value=1, max_value=20)
-    ebook = st.checkbox("Descartar e-books y audiolibros", value=False)
+    bookLimit = st.number_input("Introducir máximo de libros por tienda (max 15)", min_value=1, max_value=15)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        ebook = st.checkbox("Descartar e-books y audiolibros", value=False, key='ebook')
+    with col2:
+        itemCondition = st.checkbox("Descartar 2ª mano", value=False, key='2mano')
 if placeholderButton.button("🔍 Buscar"):
     # Get the current time
     current_time = datetime.now().time()
     print("Current Time:", current_time)
     
-    showResults(query, bookLimit, ebook)
+    showResults(query, bookLimit, ebook, itemCondition)
     placeholderexception = st.empty()
 
