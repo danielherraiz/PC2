@@ -1,7 +1,7 @@
 from datetime import datetime
 import streamlit as st
 import pandas as pd
-from RetoExtraUtils import getResults, sortResults, getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon, getBooksEbay, add_increment_column 
+from RetoExtraUtils import getResults, sortResults, getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon, getBooksEbay, getBooksCorteIngles, add_increment_column 
 
 st.set_page_config(
     page_title="Price Comparer",
@@ -41,8 +41,8 @@ def showResults(query, bookLimit, ebook, itemCondition):
         with st.spinner("Buscando libros..."):
             try:
                 #Function list for each store
-                fetchFuncs = [getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon, getBooksEbay]
-                # fetchFuncs = [getBooksEbay]
+                # fetchFuncs = [getBooksCasaLibro, getBooksLibCentral, getBooksIberLibro, getBooksAmazon, getBooksEbay]
+                fetchFuncs = [getBooksCorteIngles]
                 
                 dfs = [getResults(f, query, bookLimit, ebook, itemCondition) for f in fetchFuncs]
 

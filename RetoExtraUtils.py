@@ -22,6 +22,7 @@ import os
 import traceback
 import re
 
+
 # --- SETUP FIREFOX DRIVER ---
 service = Service(executable_path="C:/Repos/Utils/geckodriver.exe")
 options = Options()
@@ -434,10 +435,10 @@ def getBooksAmazon(query, bookLimit, ebook, itemCondition):
                         original_price = str(match.group(1))
                         print(original_price)
                     else:
-                        original_price = current_price
+                        original_price = str(current_price)
                 except:
                     print(f"origin price exception: {current_price}")
-                    original_price = current_price
+                    original_price = str(current_price)
                 books.append({
                     "Título": title,
                     "Autor": author,
@@ -468,7 +469,7 @@ def getBooksEbay(query, bookLimit, ebook, itemCondition):
     itemConditionParam = ''
     if(itemCondition):
         itemConditionParam = "&LH_ItemCondition=1000"
-    url = f"{baseUrl}sch/i.html?_nkw={query}&_sacat=267&_from=R40&_sop=15&rt=nc{itemConditionParam}"
+    url = f"{baseUrl}sch/i.html?_nkw={queryUrl}&_sacat=267&_from=R40&_sop=15&rt=nc{itemConditionParam}"
 
     page = requests.get(url)
     time.sleep(1)
@@ -546,7 +547,73 @@ def getBooksEbay(query, bookLimit, ebook, itemCondition):
     print(f'tienda 5 size: {bookDf.shape[0]}')
     return bookDf
 
+def getBooksCorteIngles(query, bookLimit, ebook, itemCondition):
+    books = []
+    bookDf = pd.DataFrame()
+    
+    baseUrl = "https://www.elcorteingles.es/"
+    queryParam = query.strip().replace(' ', '+')
+    url = f"{baseUrl}search-nwx/1/?s={queryParam}&stype=text_box&sorting=priceAsc"
+    driver.get(url)
+    time.sleep(0.5)
+    #cookies
+    try:
+        driver.find_element(By.ID, "onetrust-accept-btn-handler").click()
+    except:
+        print("no cookies")
+
+    #Categories (if present, not always work if included as url param)
+    for categories in driver.find_elements(By.CSS_SELECTOR, "button[class='chip chip--default chip]"):
+            if "Libros" in categories.text:
+                categories.click()
+                break
+    time.sleep(0.5)
+
+    results = driver.find_elements(By.CSS_SELECTOR, 'li[class="products_list-item"]')
+    driver.implicitly_wait(0.2)
+    for result in results:
+        try:
+            title_element = result.find_element(By.CSS_SELECTOR, 'a[class="product_preview-title"]')
+            title, detail = split_title_and_details(title_element.text)
+        
+            author = result.find_element(By.CSS_SELECTOR, 'p[class="product_preview-brand--text"]').text
+
+            link = baseUrl + result.find_element(By.CSS_SELECTOR, 'a[class="product_link pointer"]').get_attribute("href")
+            
+            img_url = result.find_element(By.CSS_SELECTOR, 'img[class="js_preview_image"]').get_attribute("src")
+
+            current_price = result.find_element(By.CSS_SELECTOR, 'span[class="price-sale"]').text
+            original_price = 'N/A'
+            try:
+                original_price = result.find_element(By.CSS_SELECTOR, 'span[class="price-unit--original"]').text
+            except:
+                original_price = current_price
+
+
+            books.append({
+                "Título": title,
+                "Autor": author,
+                "Comentarios": detail,
+                "Cubierta": img_url,
+                "Enlace": link,
+                "Tienda": "El Corte Inglés",
+                "Precio base": original_price,
+                "Precio final": current_price
+            })
+
+            if len(books) == bookLimit:
+                break
+        except Exception as e:
+            print(f"Error procesando un resultado: {e}")
+        if len(books) == bookLimit:
+            break
+            
+    bookDf = pd.DataFrame(books)
+    driver.close()
+    print(f'tienda 6 size: {bookDf.shape[0]}')
+    return bookDf
 ## FUNCTIONS FOR DATA MANIPULATION ##
+
 
 def add_increment_column(df, min_price):
     try:
@@ -582,3 +649,26 @@ def sortResults(df):
 def getResults(fetch_func, query, bookLimit, ebook, itemCondition):
     df = fetch_func(query, bookLimit, ebook, itemCondition)
     return sortResults(df)
+
+def split_title_and_details(title):
+    # Find all text inside parentheses
+    parts = re.findall(r"\(([^()]*)\)", title)
+
+    # Keywords to keep as details
+    keywords = ["tapa blanda", "tapa dura", "bolsillo"]
+
+    # Keep only parts that contain those keywords
+    details = [part for part in parts if any(keyword in part.lower() for keyword in keywords)]
+
+    # Remove those parts from the title
+    for part in details:
+        title = title.replace(f"({part})", "")
+
+    # Clean extra spaces and parentheses left behind
+    title = re.sub(r"\s+", " ", title).strip()  # remove double spaces
+    title = title.strip("() ").strip()          # remove extra () or trailing spaces
+
+    # Join details nicely, or return None if empty
+    detail_str = ". ".join(details) if details else None
+
+    return title, detail_str
