@@ -22,19 +22,20 @@ import os
 import traceback
 import re
 
-
-# --- SETUP FIREFOX DRIVER ---
-service = Service(executable_path="C:/Repos/Utils/geckodriver.exe")
-options = Options()
-options.add_argument("-private")
-driver = webdriver.Firefox(service=service, options=options)
-# options.headless = False  # Set to True if you don't need the browser window
-#hide firefox window
-# os.environ['MOZ_HEADLESS'] = '1'
+def startDriver():
+    # --- SETUP FIREFOX DRIVER ---
+    service = Service(executable_path="C:/Repos/Utils/geckodriver.exe")
+    options = Options()
+    options.add_argument("-private")
+    driver = webdriver.Firefox(service=service, options=options)
+    # options.headless = False  # Set to True if you don't need the browser window
+    #hide firefox window
+    # os.environ['MOZ_HEADLESS'] = '1'
+    return driver
 
 ## FUNCTIONS TO OBTAIN CONTENT FROM BOOK STORES ##
 
-def getBooksCasaLibro(query, bookLimit, ebook, itemCondition):
+def getBooksCasaLibro(driver, query, bookLimit, ebook, itemCondition):
     # driver = webdriver.Firefox(service=service, options=options)
     url = "https://www.casadellibro.com"
     driver.get(url)
@@ -175,7 +176,7 @@ def getBooksCasaLibro(query, bookLimit, ebook, itemCondition):
     print(f'tienda 1 size: {bookDf.shape[0]}')
     return bookDf
 
-def getBooksLibCentral(query, bookLimit, ebook, itemCondition):
+def getBooksLibCentral(driver, query, bookLimit, ebook, itemCondition):
     books = []
     bookDf = pd.DataFrame()
     baseUrl = 'https://www.libreriacentral.com/'
@@ -250,7 +251,7 @@ def getBooksLibCentral(query, bookLimit, ebook, itemCondition):
     print(f'tienda 2 size: {bookDf.shape[0]}')
     return bookDf
 
-def getBooksIberLibro(query, bookLimit, ebook, itemCondition):
+def getBooksIberLibro(driver, query, bookLimit, ebook, itemCondition):
     bookDf = pd.DataFrame()
     books = []
     baseUrl = 'https://www.iberlibro.com/'
@@ -321,7 +322,7 @@ def getBooksIberLibro(query, bookLimit, ebook, itemCondition):
     print(f'tienda 3 size: {bookDf.shape[0]}')
     return bookDf
 
-def getBooksAmazon(query, bookLimit, ebook, itemCondition):
+def getBooksAmazon(driver, query, bookLimit, ebook, itemCondition):
     books = []
     bookDf = pd.DataFrame()
     
@@ -457,11 +458,11 @@ def getBooksAmazon(query, bookLimit, ebook, itemCondition):
             break
             
     bookDf = pd.DataFrame(books)
-    driver.close()
+    # driver.close()
     print(f'tienda 3 size: {bookDf.shape[0]}')
     return bookDf
     
-def getBooksEbay(query, bookLimit, ebook, itemCondition):
+def getBooksEbay(driver, query, bookLimit, ebook, itemCondition):
     books = []
     bookDf = pd.DataFrame()
     baseUrl = 'https://www.ebay.es/'
@@ -547,7 +548,7 @@ def getBooksEbay(query, bookLimit, ebook, itemCondition):
     print(f'tienda 5 size: {bookDf.shape[0]}')
     return bookDf
 
-def getBooksCorteIngles(query, bookLimit, ebook, itemCondition):
+def getBooksCorteIngles(driver, query, bookLimit, ebook, itemCondition):
     books = []
     bookDf = pd.DataFrame()
     
@@ -609,7 +610,7 @@ def getBooksCorteIngles(query, bookLimit, ebook, itemCondition):
             break
             
     bookDf = pd.DataFrame(books)
-    driver.close()
+    # driver.close()
     print(f'tienda 6 size: {bookDf.shape[0]}')
     return bookDf
 ## FUNCTIONS FOR DATA MANIPULATION ##
@@ -659,16 +660,18 @@ def getResults(query, bookLimit, ebook, itemCondition, storeDic):
 
     results = []
 
+    driver = startDriver()
 
     for key, fetch_func in store_functions.items():
         if storeDic.get(key):  # Only call if checkbox is selected
             try:
-                df = fetch_func(query, bookLimit, ebook, itemCondition)
+                df = fetch_func(driver, query, bookLimit, ebook, itemCondition)
                 df = sortResults(df)  # Optional: sorting step
                 results.append(df)
             except Exception as e:
+                driver.close()
                 st.warning(f"Error fetching results from {key}: {e}")
-
+    driver.close()
     return results  # This is a list of DataFrames
 
 

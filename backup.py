@@ -60,6 +60,7 @@ def showResults(query, bookLimit, ebook, itemCondition, storeDic):
                     reducedDf = sortResults(reducedDf)
                     reducedDf, minprice = add_increment_column(reducedDf, -1)
                     st.markdown("#### 📘 Los resultados más baratos de cada tienda:")
+                    reducedDf.index = range(1, len(reducedDf) + 1)
                     drawDfTable(reducedDf, 'Reduced')
                     
                     # Show summary
@@ -77,6 +78,7 @@ def showResults(query, bookLimit, ebook, itemCondition, storeDic):
                         if expandedDfs:
                             st.markdown("#### 📚 Resultados adicionales por tienda:")
                             bookDf, minprice = add_increment_column(pd.concat(expandedDfs, ignore_index=True).sort_values(by='Precio final', ignore_index=True), minprice)
+                            bookDf.index = range(1, len(bookDf) + 1)
                             drawDfTable(bookDf, 'Expanded')
             except Exception as e:
                 st.error(f"An error occurred: {e}")
