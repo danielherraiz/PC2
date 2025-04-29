@@ -2,13 +2,7 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-# import selenium
-# import re
 import time
-# import scipy
-# import os
-# import json
-from datetime import datetime
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -16,85 +10,72 @@ from selenium.webdriver.firefox.service import Service
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.firefox.options import Options
 
-import time
-import os
-
 import traceback
 import re
+
+import os
 
 def startDriver():
     # --- SETUP FIREFOX DRIVER ---
     service = Service(executable_path="C:/Repos/Utils/geckodriver.exe")
     options = Options()
     options.add_argument("-private")
+    options.headless = True
     driver = webdriver.Firefox(service=service, options=options)
     # options.headless = False  # Set to True if you don't need the browser window
     #hide firefox window
-    # os.environ['MOZ_HEADLESS'] = '1'
     return driver
 
 ## FUNCTIONS TO OBTAIN CONTENT FROM BOOK STORES ##
 
 def getBooksCasaLibro(driver, query, bookLimit, ebook, itemCondition):
-    # driver = webdriver.Firefox(service=service, options=options)
     url = "https://www.casadellibro.com"
     driver.get(url)
-    driver.implicitly_wait(5)
-
-    # time.sleep(2)  # Wait for dynamic content to load
+    # This reduces time while allowing some time for finding elements:
+    driver.implicitly_wait(2)
     acceptCookies = driver.find_element(By.XPATH, '//*[@id="onetrust-accept-btn-handler"]')
     acceptCookies.click()
-    # time.sleep(1) 
 
     search = driver.find_element(By.XPATH, "//input[@id='empathy-search']")
     search.send_keys(query)
 
     # --- EXPAND SHADOW DOM ROOT ---
     # def expand_shadow_element(element):
-    #     
-    #     return shadow_root
 
     root1 = driver.find_element(By.XPATH, "//div[@class='x-root-container']")
-    # shadow_root1 = expand_shadow_element(root1)
     shadow_root = driver.execute_script("return arguments[0].shadowRoot", root1)
-    # time.sleep(0.5)
     # Interact with right side panel ('Ordenar por)
     # Open right side panel 
     rightPanel = shadow_root.find_element(By.CSS_SELECTOR, 'button[data-test="toggle-facets-button"]')
     rightPanel.click()
-    # time.sleep(0.2)
     # Sort 
     sortButton = shadow_root.find_element(By.CSS_SELECTOR, 'div[data-test="sort"]')
     sortButton.click()
-    # time.sleep(0.2)
+    # Some margin to load all checkboxes
+    time.sleep(0.3)
     for checkbox in sortButton.find_elements(By.CSS_SELECTOR, 'button[data-test="sort-picker-button"]'):
         if checkbox.text == 'Precio: De menor a mayor':
             checkbox.click()
-    # time.sleep(2)
-    # Availability dropdown
     try:
         availability = shadow_root.find_element(By.CSS_SELECTOR, 'div[data-test="availability"]')
-        
         availability.click()
-        # time.sleep(1.5)
+        time.sleep(0.3)
         # Look for "available" checkbox and click it (the checkbox order changes with the query)
         for checkbox in availability.find_elements(By.CSS_SELECTOR, 'button[data-test="filter"]'):
-            print(checkbox.text)
             if re.search(r"disponible", checkbox.text, re.IGNORECASE):
                 checkbox.click()
                 break
-        # time.sleep(1.5)
     except (NoSuchElementException , TimeoutException) as e:
         print(e.args)
-    
+    # Some margin to load all results (if I only rely on implicit, it might only get the first result)
     time.sleep(0.5)
     shadow_root = driver.execute_script("return arguments[0].shadowRoot", root1)
     results = shadow_root.find_elements(By.CSS_SELECTOR, "li.x-base-grid__item")
-    time.sleep(0.5)
     books = []
     bookDf = pd.DataFrame()
     i=0
-    driver.implicitly_wait(0.5)
+    # Once the results are loaded, I don't need the implicit wait. Some elements might not be found/needed
+    driver.implicitly_wait(0)
     for result in results:
         i+=1
         try:
@@ -123,7 +104,6 @@ def getBooksCasaLibro(driver, query, bookLimit, ebook, itemCondition):
                 print(e.args)
                 img_url = "N/A"
 
-            #Previous version
             #Link
             try:
                 link_el = article.find_element(By.CSS_SELECTOR, 'a[data-test="result-link"]')
@@ -133,7 +113,6 @@ def getBooksCasaLibro(driver, query, bookLimit, ebook, itemCondition):
                 link = "N/A"
                 
             # Price (Current)
-            
             try:
                 price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-current-price"]')
                 current_price = price_elem.text.strip()
@@ -143,36 +122,24 @@ def getBooksCasaLibro(driver, query, bookLimit, ebook, itemCondition):
             except (NoSuchElementException , TimeoutException) as e:
                 print(e.args)
                 print('Exception no price found 1')
-                
                 continue
 
-            # # Price (original)
+            #Price (original)
             try:
                 original_price_elem = article.find_element(By.CSS_SELECTOR, 'div[data-test="result-previous-price"]')
                 original_price = original_price_elem.text.strip()
             except (NoSuchElementException , TimeoutException) as e:
                 print(e.args)
                 original_price = current_price
-
-            books.append({
-                "Título": title,
-                "Autor": author,
-                "Comentarios": detail,
-                "Precio base": original_price,
-                "Precio final": current_price,
-                "Cubierta": img_url,
-                "Enlace": link,
-                "Tienda": "Casa del libro"
-            })
-            print(len(books))
+            # Build list of dictionaries
+            books = includeBook(books,title,author,detail,img_url,link,"Casa del libro",original_price,current_price)
             
         except Exception as e:
             print(f"Error al obtener resultados de {url} : {e}")
+        #Exit loop if enough results are retrieved
         if len(books) == bookLimit:
             break
     bookDf = pd.DataFrame(books)
-    # driver.close()
-    # return bookDf.truncate(after=bookLimit)
     print(f'tienda 1 size: {bookDf.shape[0]}')
     return bookDf
 
@@ -189,7 +156,6 @@ def getBooksLibCentral(driver, query, bookLimit, ebook, itemCondition):
     i = 0
     for result in results:
         i+=1
-        print(i)
         try:
             #In stock? 
             availability = result.find("span", class_='css-disponible')
@@ -198,11 +164,9 @@ def getBooksLibCentral(driver, query, bookLimit, ebook, itemCondition):
                 # Title
                 name_element = result.find(attrs={"itemprop": "name"})
                 title = name_element.get_text().strip()
-                print(title)
 
                 #Author
                 author = result.find("meta", attrs={"itemprop": "author"})['content'].strip()
-                print(author)
                 detail = 'N/A'
 
                 # Price 
@@ -216,38 +180,23 @@ def getBooksLibCentral(driver, query, bookLimit, ebook, itemCondition):
                 except e:
                     #Book discarded if no price
                     continue
-                print(current_price)
                 # Image
                 try:
                     img_url = baseUrl + result.find("img", class_='foto')['src']
                 except e:
                     img_url = "N/A"
-                print(img_url)
                 #Link
                 try:
                     link = result.find("a", attrs={"itemprop": "url"})["href"].strip()
                     link = baseUrl + link
-                    print(link)
                 except:
                     link = "N/A"
-
-                books.append({
-                    "Título": title,
-                    "Autor": author,
-                    "Comentarios": detail,
-                    "Precio base": original_price,
-                    "Precio final": current_price,
-                    "Cubierta": img_url,
-                    "Enlace": link,
-                    "Tienda": "Librería central"
-                })
-                print(len(books))
+                books = includeBook(books,title,author,detail,img_url,link,"Librería central",original_price,current_price)
                 bookDf = pd.DataFrame(books)
             if len(books) == bookLimit:
                 break
         except Exception as e:
             print(f"Error al obtener resultados de {baseUrl} : {e}")
-    # return bookDf.truncate(after=bookLimit)
     print(f'tienda 2 size: {bookDf.shape[0]}')
     return bookDf
 
@@ -256,44 +205,30 @@ def getBooksIberLibro(driver, query, bookLimit, ebook, itemCondition):
     books = []
     baseUrl = 'https://www.iberlibro.com/'
     queryUrl = query.strip().replace(" ","%20")
-    # url = f"{baseUrl}servlet/SearchResults?cond=new&ds=20&fs=es&kn={queryUrl}&n=100046497&pt=book&rollup=on&sortby=2"
     url = f"{baseUrl}servlet/SearchResults?ch_sort=t&cm_sp=sort-_-SRP-_-Results&cond=new&ds=20&fs=es&kn={queryUrl}&n=100046497&pt=book&rollup=on&sortby=2"
     page = requests.get(url)
-    time.sleep(0.5)
+    time.sleep(1)
     soup = BeautifulSoup(page.content,"html.parser")
     results = soup.find_all("li",class_="cf result-item",limit = bookLimit)
     i = 0
     for result in results:
         i+=1
-        print(i)
         try:
-            # Title
             title = result.find(attrs={"itemprop": "name"})['content'].strip()
-            # title = name_element.get_text().strip()
-            print(title)
-
-            #Author
             author = result.find("meta", attrs={"itemprop": "author"})['content'].strip()
-            print(author)
             detail = result.find("meta", attrs={"itemprop": "about"})['content']
             detail = re.split(r'Condic.*', detail)[0].strip()
-            print(author)
-            # Price 
             try:
                 current_price = result.find("p", class_="item-price").text
-                
                 original_price = current_price
             except Exception as e:
                 #Book discarded if no price
                 continue
-            print(current_price)
             # Image
             try:
                 img_url = result.find("img", class_='srp-item-image')['src'].strip()
-                # img_url = result.find("img", class_="srp-item-image")['src'].strip()
             except Exception as e:
                 img_url = "N/A"
-            print(img_url)
             #Link
             try:
                 link = result.find("a", attrs={"itemprop": "url"})["href"].strip()
@@ -302,45 +237,28 @@ def getBooksIberLibro(driver, query, bookLimit, ebook, itemCondition):
             except Exception as e:
                 link = "N/A"
 
-            books.append({
-                "Título": title,
-                "Autor": author,
-                "Comentarios": detail,
-                "Precio base": original_price,
-                "Precio final": current_price,
-                "Cubierta": img_url,
-                "Enlace": link,
-                "Tienda": "Iber Libro"
-            })
-            print(len(books))
+            books = includeBook(books,title,author,detail,img_url,link,"Iber Libro",original_price,current_price)
             bookDf = pd.DataFrame(books)
         except Exception as e:
             print(f"Error al obtener resultados de {baseUrl} : {e}")
         if len(books) == bookLimit:
             break
-    # return bookDf.truncate(after=bookLimit)
     print(f'tienda 3 size: {bookDf.shape[0]}')
     return bookDf
 
 def getBooksAmazon(driver, query, bookLimit, ebook, itemCondition):
     books = []
     bookDf = pd.DataFrame()
-    
     url = "https://www.amazon.es/"
     driver.get(url)
-    time.sleep(0.5)
-
-    # time.sleep(2)  # Wait for dynamic content to load
-    # acceptCookies = driver.find_element(By.XPATH, '//*[@id="onetrust-accept-btn-handler"]')
-    # acceptCookies.click()
-    # time.sleep(1) 
+    driver.implicitly_wait(1)
     #cookies
     try:
         driver.find_element(By.ID, "sp-cc-accept").click()
     except:
         print("no cookies")
 
-    driver.implicitly_wait(2)
+    driver.implicitly_wait(0.8)
     #Category button
     try:
         driver.find_element(By.ID, "searchDropdownBox").click()
@@ -352,12 +270,14 @@ def getBooksAmazon(driver, query, bookLimit, ebook, itemCondition):
         #Confirm search
         driver.find_element(By.XPATH, "//input[@id='nav-search-submit-button']").click()
     except:
+        print('opcion 2')
         #Sometimes the category is not shown until a first search (page load is different)
         search0 = driver.find_element(By.ID, "nav-bb-search").click()
         search0.send_keys(query)
         driver.find_element(By.ID, "nav-bb-button").click()
         driver.find_element(By.ID, "searchDropdownBox").click()
         driver.find_element(By.XPATH, "//option[@value='search-alias=stripbooks']").click()
+        driver.find_element(By.XPATH, "//input[@id='nav-search-submit-button']").click()
         
     if(itemCondition):
         for itemCondButton in driver.find_elements(By.ID, "p_n_condition-type/15144009031"):
@@ -368,25 +288,16 @@ def getBooksAmazon(driver, query, bookLimit, ebook, itemCondition):
     for resultMessage in driver.find_elements(By.XPATH, "//div[contains(@data-cel-widget,'search_result')]"):
         if 'No hay resultados para' in resultMessage.text:
             print('no hay resultados')
-            driver.close()
             return bookDf
-    # #Sort price ascending
-    # driver.find_element(By.CSS_SELECTOR, "span[class='a-dropdown-prompt']").click()
-    # time.sleep(0.3)
     try:
-        driver.find_element(By.CSS_SELECTOR, "span[class='a-dropdown-container']").click()
+        sortDropDown = driver.find_element(By.CSS_SELECTOR, "span[class='a-dropdown-container']")
+        sortDropDown.click()
+        sortButton = driver.find_element(By.CSS_SELECTOR, "a[id='s-result-sort-select_1']")
+        sortButton.click()
     except:
-        driver.close()
-        return bookDf
-    
-    # time.sleep(0.3)
-    driver.find_element(By.CSS_SELECTOR, "a[id='s-result-sort-select_1']").click()
-    time.sleep(1)
+        print('No se pudo ordenar en amazon')
+    time.sleep(0.5)
     results = driver.find_elements(By.CSS_SELECTOR, "div[data-csa-c-type='item']")
-    print(datetime.now().time())
-    print(len(results))
-    baseUrl = "https://www.amazon.es/"
-    
     driver.implicitly_wait(0)
     i=0
     for result in results:
@@ -407,7 +318,6 @@ def getBooksAmazon(driver, query, bookLimit, ebook, itemCondition):
             except:
                 print('no image')
             #Different prices for different formats. Will be saved as different book results
-            # i=0
             # All detail links
             detail_link_List = result.find_elements(By.XPATH, './/a[contains(@class,"a-text-bold")]')
             # All prices
@@ -416,40 +326,29 @@ def getBooksAmazon(driver, query, bookLimit, ebook, itemCondition):
             for i in range(len(price_List)):
                 try:
                     detail = detail_link_List[i].text
+                    #Discard ebooks and others (input checkbox)
                     if ("Kindle" in detail or "Audiolibro" in detail or "Pódcast" in detail) and ebook:
                         continue
                     link = detail_link_List[i].get_attribute("href")
                 except:
                     detail = "N/A"
                     link = "N/A" 
-                    print('no detail')     
                 price_text = price_List[i].text.replace("\n", ".").replace(",", ".")
                 match = re.match(r"(\d+[.]?\d*)", price_text)
                 if match:
-                    
                     current_price = float(match.group(1))
-                    print(f"price match: {current_price}")
                 try:
                     original_text = price_List[i].find_element(By.XPATH, './/span[@class="a-price a-text-price"]').text
                     match = re.match(r"(\d+[.]?\d*)", original_text.replace(",", "."))
                     if match:
                         original_price = str(match.group(1))
-                        print(original_price)
                     else:
                         original_price = str(current_price)
                 except:
-                    print(f"origin price exception: {current_price}")
                     original_price = str(current_price)
-                books.append({
-                    "Título": title,
-                    "Autor": author,
-                    "Comentarios": detail,
-                    "Cubierta": img_url,
-                    "Enlace": link,
-                    "Tienda": "Amazon",
-                    "Precio base": original_price,
-                    "Precio final": current_price
-                })
+
+                books = includeBook(books,title,author,detail,img_url,link,"Amazon",original_price,current_price)
+
                 if len(books) == bookLimit:
                     break
         except Exception as e:
@@ -459,7 +358,7 @@ def getBooksAmazon(driver, query, bookLimit, ebook, itemCondition):
             
     bookDf = pd.DataFrame(books)
     # driver.close()
-    print(f'tienda 3 size: {bookDf.shape[0]}')
+    print(f'tienda 4 size: {bookDf.shape[0]}')
     return bookDf
     
 def getBooksEbay(driver, query, bookLimit, ebook, itemCondition):
@@ -527,24 +426,14 @@ def getBooksEbay(driver, query, bookLimit, ebook, itemCondition):
             except:
                 link = "N/A"
 
-            books.append({
-                "Título": title,
-                "Autor": author,
-                "Comentarios": detail,
-                "Precio base": original_price,
-                "Precio final": current_price,
-                "Cubierta": img_url,
-                "Enlace": link,
-                "Tienda": "eBay"
-            })
+            books = includeBook(books,title,author,detail,img_url,link,"eBay",original_price,current_price)
+
             print(len(books))
             bookDf = pd.DataFrame(books)
             if len(books) == bookLimit:
                 break
         except Exception as e:
-            print(f"Error al obtener resultados de {baseUrl} : {e}")
             print(f"Error al obtener resultados de {baseUrl} : {e.args}")
-    # return bookDf.truncate(after=bookLimit)
     print(f'tienda 5 size: {bookDf.shape[0]}')
     return bookDf
 
@@ -556,7 +445,8 @@ def getBooksCorteIngles(driver, query, bookLimit, ebook, itemCondition):
     queryParam = query.strip().replace(' ', '+')
     url = f"{baseUrl}search-nwx/1/?s={queryParam}&stype=text_box&sorting=priceAsc"
     driver.get(url)
-    time.sleep(0.5)
+    driver.implicitly_wait(0.6)
+    time.sleep(0.6)
     #cookies
     try:
         driver.find_element(By.ID, "onetrust-accept-btn-handler").click()
@@ -568,10 +458,9 @@ def getBooksCorteIngles(driver, query, bookLimit, ebook, itemCondition):
             if "Libros" in categories.text:
                 categories.click()
                 break
-    time.sleep(0.5)
-
+    time.sleep(0.4)
     results = driver.find_elements(By.CSS_SELECTOR, 'li[class="products_list-item"]')
-    driver.implicitly_wait(0.2)
+    driver.implicitly_wait(0.1)
     for result in results:
         try:
             title_element = result.find_element(By.CSS_SELECTOR, 'a[class="product_preview-title"]')
@@ -590,17 +479,7 @@ def getBooksCorteIngles(driver, query, bookLimit, ebook, itemCondition):
             except:
                 original_price = current_price
 
-
-            books.append({
-                "Título": title,
-                "Autor": author,
-                "Comentarios": detail,
-                "Cubierta": img_url,
-                "Enlace": link,
-                "Tienda": "El Corte Inglés",
-                "Precio base": original_price,
-                "Precio final": current_price
-            })
+            books = includeBook(books,title,author,detail,img_url,link,"El Corte Inglés",original_price,current_price)
 
             if len(books) == bookLimit:
                 break
@@ -610,11 +489,86 @@ def getBooksCorteIngles(driver, query, bookLimit, ebook, itemCondition):
             break
             
     bookDf = pd.DataFrame(books)
-    # driver.close()
     print(f'tienda 6 size: {bookDf.shape[0]}')
     return bookDf
-## FUNCTIONS FOR DATA MANIPULATION ##
 
+def getBooksBuscaLibre(driver, query, bookLimit, ebook, itemCondition):
+    books = []
+    bookDf = pd.DataFrame()
+    
+    baseUrl = "https://www.buscalibre.es/"
+    queryParam = query.strip().replace(' ', '+')
+    itemConditionParam = ''
+    if (itemCondition):
+        itemConditionParam = '-asc&condition=new'
+    url = f"{baseUrl}libros/search/?q={queryParam}&sort=64_price-asc{itemConditionParam}"
+    driver.get(url)
+    driver.implicitly_wait(1)
+    time.sleep(0.6)
+    
+    #Prueba con un resultado
+    try:
+        title = driver.find_element(By.CSS_SELECTOR, 'p[class="tituloProducto"]').text
+        driver.implicitly_wait(0.1)
+        subtitle_element = driver.find_element(By.CSS_SELECTOR, 'p[class="font-weight-light margin-0 font-size-h1"]')
+        author = subtitle_element.find_element(By.CSS_SELECTOR, 'a[class="font-color-bl link-underline"]').text
+        detail = subtitle_element.text.replace(f"{author} (Autor) · ", "").replace(" · ", ", ").strip()
+
+        link = driver.current_url
+        img_url = driver.find_element(By.ID, 'imgPortada').get_attribute('src')
+       
+        price_element = driver.find_element(By.ID, 'opciones')
+        for price_subelement in price_element.find_elements(By.XPATH, 'div[contains(@class, "opcionPrecio")]'):
+            if "Libro Usado" in price_subelement.text and itemCondition == False:
+                current_price = price_element.find_element(By.CSS_SELECTOR, 'span[class="ped"]').text
+                original_price = current_price
+                books = includeBook(books,title,author,detail,img_url,link,"Busca Libre",original_price,current_price)
+                if len(books) == bookLimit:
+                    break
+            if "Libro Nuevo" in price_subelement.text:
+                current_price = price_element.find_element(By.CSS_SELECTOR, 'span[class="ped"]').text
+                original_price = price_element.find_element(By.CSS_SELECTOR, 'span[class="pvp"]').text
+                books = includeBook(books,title,author,detail,img_url,link,"Busca Libre",original_price,current_price)
+                if len(books) == bookLimit:
+                    break
+
+    #Si no se ha encontrado, es un elemento distinto con varios resultados
+    except:
+        for result in driver.find_elements(By.XPATH, "//div[contains(@class,'box-producto producto')]"):
+            try:
+
+                title = result.find_element(By.CSS_SELECTOR, 'h3[class="nombre margin-top-10 text-align-left"]').text
+                author = result.find_element(By.CSS_SELECTOR, 'div[class="autor"]').text
+                link = result.find_element(By.XPATH, 'a[contains(@href, "https://www.buscalibre.es")]').get_attribute('href')
+                try:
+                    img_url_parent = result.find_element(By.CSS_SELECTOR, 'div[class="imagen"]')
+                    img_url = img_url_parent.find_element(By.CSS_SELECTOR, 'img[class=" lazyloaded"]').get_attribute('src')
+                except:
+                    img_url = ''
+                try:
+                    detail = result.find_element(By.CSS_SELECTOR, 'div[class="autor color-dark-gray metas hide-on-hover"]').text
+                except:
+                    detail = ''
+                    
+                price_element = result.find_element(By.CSS_SELECTOR, 'div[class="box-precio-v2 row margin-top-10 hide-on-hover"]')
+                current_price = price_element.find_element(By.CSS_SELECTOR, 'p[class = "precio-ahora hide-on-hover margin-0 font-size-medium"]').text
+                original_price = price_element.find_element(By.CSS_SELECTOR, 'p[class = "precio-antes hide-on-hover margin-0 color-dark-gray font-weight-normal"]').text
+                # price_element = result.find_element(By.XPATH, 'div[contains(@class, "box-precios")]')
+                # current_price = price_element.find_element(By.XPATH, 'p[contains(@class, "precio-ahora")]').text
+                # original_price = price_element.find_element(By.XPATH, 'p[contains(@class, "precio-antes")]').text
+               
+                books = includeBook(books,title,author,detail,img_url,link,"Busca Libre",original_price,current_price)
+
+            except Exception as e:
+                print(f"Error procesando un resultado: {e}")
+            if len(books) == bookLimit:
+                break
+            
+    bookDf = pd.DataFrame(books)
+    print(f'tienda 7 size: {bookDf.shape[0]}')
+    return bookDf
+
+## FUNCTIONS FOR DATA MANIPULATION ##
 
 def add_increment_column(df, min_price):
     try:
@@ -648,14 +602,16 @@ def sortResults(df):
         return df
 
 def getResults(query, bookLimit, ebook, itemCondition, storeDic):
-    # Mapping keys from the dictionary to their corresponding functions
+    # Receives a dictionary with value True or False for each store, from app input
+    # Mapping keys from the dictionary to their corresponding functions:
     store_functions = {
         'include_casalibro': getBooksCasaLibro,
         'include_libcentral': getBooksLibCentral,
         'include_iberlibro': getBooksIberLibro,
         'include_amazon': getBooksAmazon,
         'include_ebay': getBooksEbay,
-        'include_corteingles': getBooksCorteIngles
+        'include_corteingles': getBooksCorteIngles,
+        'include_buscalibre' : getBooksBuscaLibre
     }
 
     results = []
@@ -663,19 +619,19 @@ def getResults(query, bookLimit, ebook, itemCondition, storeDic):
     driver = startDriver()
 
     for key, fetch_func in store_functions.items():
-        if storeDic.get(key):  # Only call if checkbox is selected
+        # Only call if store checkbox is true
+        if storeDic.get(key):
             try:
                 df = fetch_func(driver, query, bookLimit, ebook, itemCondition)
-                df = sortResults(df)  # Optional: sorting step
+                df = sortResults(df) 
                 results.append(df)
             except Exception as e:
-                driver.close()
-                st.warning(f"Error fetching results from {key}: {e}")
+                st.warning(f"Error al obtener resultados de {key.split("_")[1]}: {e}")
     driver.close()
-    return results  # This is a list of DataFrames
-
+    return results
 
 def split_title_and_details(title):
+        
     # Find all text inside parentheses
     parts = re.findall(r"\(([^()]*)\)", title)
 
@@ -697,3 +653,16 @@ def split_title_and_details(title):
     detail_str = ". ".join(details) if details else None
 
     return title, detail_str
+
+def includeBook (books, title, author, detail, img_url, link, store, original_price, current_price):
+    books.append({
+        "Título": title,
+        "Autor": author,
+        "Comentarios": detail,
+        "Cubierta": img_url,
+        "Enlace": link,
+        "Tienda": store,
+        "Precio base": original_price,
+        "Precio final": current_price
+    })
+    return books
