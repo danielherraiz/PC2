@@ -1,7 +1,10 @@
 from datetime import datetime
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+import altair as alt
 from RetoExtraUtils import getResults, sortResults, add_increment_column 
+
 
 st.set_page_config(
     page_title="Price Comparer",
@@ -14,7 +17,7 @@ st.title("PC2 Reto Extra")
 st.header("Comparador de precios para libros")
 st.subheader("Daniel Herraiz")
 def drawDfTable(inputDf,dfkey):
-
+    
     st.data_editor(
         inputDf,
         use_container_width=True,
@@ -34,6 +37,33 @@ def drawDfTable(inputDf,dfkey):
         key=dfkey
         # hide_index=True
     )
+
+
+
+def drawChart(df):
+        
+    colchart1, colchart2 = st.columns(2)
+    with colchart1:
+        try:
+        # Convert "Precio final" to numeric
+            # Convert "Precio final" to numeric
+            df["Precio_num"] = df["Precio final"].str.replace("€", "").str.replace(",", ".").str.strip().astype(float)
+
+            # Define chart size and properties
+            chart = alt.Chart(df).mark_bar(color='skyblue').encode(
+                x=alt.X('Tienda:N', title='Tienda'),
+                y=alt.Y('Precio_num:Q', title='Precio final (€)', scale=alt.Scale(domain=[0, df["Precio_num"].max() * 1.1])),
+                text='Precio final:N'
+            )
+            # Add tooltips (show € price on hover)
+            chart = chart.encode(
+                tooltip=['Título:N', 'Precio final:N', 'Tienda:N']
+            )
+
+            # Display the chart in Streamlit
+            st.altair_chart(chart, theme = "streamlit", use_container_width=True)
+        except Exception as e:
+            st.error(f"Error generando el gráfico: {e}")
 
 def showResults(query, bookLimit, ebook, itemCondition, storeDic):
 
@@ -55,7 +85,8 @@ def showResults(query, bookLimit, ebook, itemCondition, storeDic):
                     st.markdown("#### 📘 Los resultados más baratos de cada tienda:")
                     reducedDf.index = range(1, len(reducedDf) + 1)
                     drawDfTable(reducedDf, 'Reduced')
-                    
+                    # Show graph
+                    drawChart(reducedDf)
                     # Show summary
                     st.markdown("*Resumen de resultados por tienda:*")
                     for df in dfs:
@@ -108,3 +139,9 @@ if placeholderButton.button("🔍 Buscar"):
     showResults(query, bookLimit, ebook, itemCondition, storeDic)
     placeholderexception = st.empty()
 
+# if st.button('draw test'):
+#     df = pd.DataFrame({
+#     "Tienda": ["Tienda A", "Tienda B", "Tienda C", "Tienda D", "Tienda E", "Tienda F", "Tienda G"],
+#     "Precio final": ["12.5 €", "10 €", "15 €", "11.5 €", "13 €", "9 €", "14 €"]
+#     })
+#     drawChart(df)

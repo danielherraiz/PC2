@@ -594,7 +594,12 @@ def add_increment_column(df, min_price):
         if(min_price==-1):
             min_price = df["Precio final"].min()
         
-        df["Incremento %"] = ((df["Precio final"] - min_price) / min_price * 100).round(2).astype(str) + " %"
+        df["Incremento %"] = (df["Precio final"] - min_price).round(2).astype(str) + ' € (' +((df["Precio final"] - min_price) / min_price * 100).round(2).astype(str) + " %)"
+        
+        # df["Incremento %"] = (
+        # (df["Precio final"] - min_price).astype(str) + ' € (' +
+        # ((df["Precio final"] - min_price) / min_price * 100).round(2).astype(str) + " %)")
+        
         df["Precio base"] = df["Precio base"].str.replace(",", ".").replace(r"[^\d.,]", "", regex=True) + " €"
         df["Precio final"] = df["Precio final"].round(2).astype(str) + " €"
     except Exception as e:

@@ -1,13 +1,11 @@
+from datetime import datetime
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-import selenium
 import re
 import time
-import scipy
 import os
-import json
 
 
 st.set_page_config(
@@ -55,19 +53,33 @@ def getPageContent (pageNumber):
         print(f"pag {pageNumber} obtenida desde cache")
         return cachedContent, 'cache'
     else:  
-        time.sleep(0.05)
         url = f"https://www.scrapethissite.com/pages/forms/?page_num={pageNumber}"
-        page = requests.get(url)
-        if page.status_code != 200:
-            raise Exception(f"Expected 200, got {page.status_code}")
-        print (page.status_code)
-        upsertCachedFile(pageNumber, page.content)
-        return page.content, 'request'
+        timeout = 5
+        retries = 4
+        delay = 2
+        for attempt in range(1, retries + 1):
+            try:
+                page = requests.get(url, timeout=timeout)
+                if page.status_code != 200:
+                    raise Exception(f"Se esperaba 200, se obtuvo {page.status_code}")
+                print(f"Status code: {page.status_code}")
+                try:
+                    upsertCachedFile(pageNumber, page.content)
+                except Exception as e:
+                    print(f'Error al actualizar cache pag {pageNumber}: {e}')
+                return page.content, 'request'
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                print(f"Error de red intento {attempt}: {e}")
+                if attempt < retries:
+                    time.sleep(delay)
+                else:
+                    raise Exception(f"Error al obtener página {pageNumber} tras {retries} intentos.")
     
 
 #Obtener el dataframe del contenido
 def getDfFromPage (pageNumber, withFilter, minGoalDif):
     pageContent, origin = getPageContent(pageNumber)
+    print(f"content ok {pageNumber}")
     table = BeautifulSoup(pageContent,"html.parser").find("table", class_="table")
     #Puedo extraer todas las columnas
     columnNames = [th.get_text(strip=True) for th in table.find_all("th")]
@@ -84,13 +96,17 @@ def getDfFromPage (pageNumber, withFilter, minGoalDif):
             continue
         values = [td.get_text(strip=True) for td in row.find_all("td", class_=["name","year","wins","losses",re.compile("diff")])]
         teams.append(values)  
-    return pd.DataFrame(teams, columns=columnNames), origin
+    pageDf = pd.DataFrame(teams, columns=columnNames)
+    #  "+/-" a integer
+    pageDf["+/-"] = pd.to_numeric(pageDf["+/-"], errors='coerce').fillna(0).astype(int)
+    return pageDf, origin
 
 #Obtener un dataframe de un rango de páginas
 def getDfFromPageRange (firstPage, lastPage, withFilter, minGoalDif):
     resultDf = pd.DataFrame()
     #try:
     for i in range(firstPage, lastPage + 1):
+        my_bar.progress(i/lastPage, text= f"cargando página {i} de {lastPage}")
         pageDf, origin = getDfFromPage(i,withFilter,minGoalDif)
         if resultDf.empty:
             resultDf = pageDf.copy()
@@ -100,6 +116,7 @@ def getDfFromPageRange (firstPage, lastPage, withFilter, minGoalDif):
             "Page": i,
             "Origin": origin
         })
+        
     #except Exception:
         #print ("Rango inválido de páginas, prueba otros valores")
     return resultDf, origin_list
@@ -127,7 +144,7 @@ def reviewDeleteCacheFolder(delete):
         print('no vaciado')
         st.sidebar.warning("No se ha encontrado nada en cache")
 
-### CODIGO PARA INTERACTUAR CON LA APLICACIÓN EN STREAMLIT33
+### CODIGO PARA INTERACTUAR CON LA APLICACIÓN EN STREAMLIT
 st.sidebar.header("Gestión de cache")
 
 tab1, tab2 = st.tabs(["Una página", "Rango de páginas (Extra)"])
@@ -143,17 +160,18 @@ with tab1:
     filterValue = placeholderFilter1.number_input('Introduce un mínimo de diferencia de goles para el filtro',key='filterValueOnePage',disabled=not filter, step=1,)
    
     if st.button("Obtener",key='onePageButton'):
-        fromCache = False
-        #cacheData={'From Cache':getCacheDetails(pageNumber)}
-        df_onePag, origin = getDfFromPage(pageNumber, filter, filterValue)
-        if df_onePag.shape[0] > 0:
-            st.success(f"Se han encontrado {df_onePag.shape[0]} equipos")
-        else:
-            st.error(f"No se han encontrado equipos")
-        print(df_onePag.shape)
-        #df_onePag.head(10)
-        st.dataframe(df_onePag)
-        st.sidebar.info(f'La información fue obtenida desde {origin}')
+        with st.spinner("Buscando datos de equipos..."):
+            fromCache = False
+            #cacheData={'From Cache':getCacheDetails(pageNumber)}
+            df_onePag, origin = getDfFromPage(pageNumber, filter, filterValue)
+            if df_onePag.shape[0] > 0:
+                st.success(f"Se han encontrado {df_onePag.shape[0]} equipos")
+            else:
+                st.error(f"No se han encontrado equipos")
+            print(df_onePag.shape)
+            #df_onePag.head(10)
+            st.dataframe(df_onePag)
+            st.sidebar.info(f'La información fue obtenida desde {origin}')
 
 with tab2:
     st.header("Datos de un rango de páginas")
@@ -162,17 +180,22 @@ with tab2:
     filterValue = st.number_input('Introduce un mínimo de diferencia de goles para el filtro',key='filterValuePageRange',disabled=not filter, step=1)
     
     if st.button("Obtener",key='pageRangeButton'):
-        df_multiplePag, origin_list = getDfFromPageRange(slider_range[0],slider_range[1], filter, filterValue)
-        if df_multiplePag.shape[0] > 0:
-            st.success(f"Se han encontrado {df_multiplePag.shape[0]} equipos")
-        else:
-            st.error(f"No se han encontrado equipos")
-        print(df_multiplePag.shape[0])
-        #df_multiplePag.head(10)
-        st.dataframe(df_multiplePag)
-        df_origin = pd.DataFrame(origin_list)
-        st.sidebar.info('La información fue obtenida desde:')
-        st.sidebar.dataframe(df_origin,hide_index=True,use_container_width=False)
+        current_time = datetime.now().time()
+        print(current_time)
+        with st.spinner("Buscando datos de equipos..."):
+            my_bar = st.progress(0,text=f'Cargando {slider_range[1]} páginas')
+            df_multiplePag, origin_list = getDfFromPageRange(slider_range[0],slider_range[1], filter, filterValue)
+            if df_multiplePag.shape[0] > 0:
+                st.success(f"Se han encontrado {df_multiplePag.shape[0]} equipos")
+            else:
+                st.error(f"No se han encontrado equipos")
+            print(df_multiplePag.shape[0])
+            #df_multiplePag.head(10)
+            st.dataframe(df_multiplePag)
+            df_origin = pd.DataFrame(origin_list)
+            st.sidebar.info('La información fue obtenida desde:')
+            st.sidebar.dataframe(df_origin,hide_index=True,use_container_width=False)
+            my_bar.empty()
 
 #Opciones para revisar o vaciar cache
 if st.sidebar.button("Revisar Cache"):
