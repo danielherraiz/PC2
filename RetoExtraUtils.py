@@ -9,6 +9,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.keys import Keys
 
 import traceback
 import re
@@ -29,50 +30,60 @@ def startDriver():
 ## FUNCTIONS TO OBTAIN CONTENT FROM BOOK STORES ##
 
 def getBooksCasaLibro(driver, query, bookLimit, ebook, itemCondition):
+    books = []
+    bookDf = pd.DataFrame()
     url = "https://www.casadellibro.com"
     driver.get(url)
+    driver.maximize_window()
     # This reduces time while allowing some time for finding elements:
-    driver.implicitly_wait(2)
-    acceptCookies = driver.find_element(By.XPATH, '//*[@id="onetrust-accept-btn-handler"]')
+    time.sleep(0.3)
+    driver.implicitly_wait(1.4)
+    acceptCookies = driver.find_element(By.CSS_SELECTOR, 'button[id="onetrust-accept-btn-handler"]')
     acceptCookies.click()
-
-    search = driver.find_element(By.XPATH, "//input[@id='empathy-search']")
-    search.send_keys(query)
+    try:
+        search = driver.find_element(By.XPATH, "//input[@id='empathy-search']")
+        search.send_keys(query)
+    except:
+        search = driver.find_element(By.CSS_SELECTOR, "input[data-test='search-input']")
+        search.send_keys(query)
+        search.send_keys(Keys.ENTER)
 
     # --- EXPAND SHADOW DOM ROOT ---
     # def expand_shadow_element(element):
 
     root1 = driver.find_element(By.XPATH, "//div[@class='x-root-container']")
     shadow_root = driver.execute_script("return arguments[0].shadowRoot", root1)
-    # Interact with right side panel ('Ordenar por)
-    # Open right side panel 
-    rightPanel = shadow_root.find_element(By.CSS_SELECTOR, 'button[data-test="toggle-facets-button"]')
-    rightPanel.click()
-    # Sort 
-    sortButton = shadow_root.find_element(By.CSS_SELECTOR, 'div[data-test="sort"]')
-    sortButton.click()
-    # Some margin to load all checkboxes
-    time.sleep(0.3)
-    for checkbox in sortButton.find_elements(By.CSS_SELECTOR, 'button[data-test="sort-picker-button"]'):
-        if checkbox.text == 'Precio: De menor a mayor':
-            checkbox.click()
     try:
-        availability = shadow_root.find_element(By.CSS_SELECTOR, 'div[data-test="availability"]')
-        availability.click()
+        # Interact with right side panel ('Ordenar por)
+        # Open right side panel 
+        rightPanel = shadow_root.find_element(By.CSS_SELECTOR, 'button[data-test="toggle-facets-button"]')
+        rightPanel.click()
+        # Sort 
+        sortButton = shadow_root.find_element(By.CSS_SELECTOR, 'div[data-test="sort"]')
+        sortButton.click()
+        # Some margin to load all checkboxes
         time.sleep(0.3)
-        # Look for "available" checkbox and click it (the checkbox order changes with the query)
-        for checkbox in availability.find_elements(By.CSS_SELECTOR, 'button[data-test="filter"]'):
-            if re.search(r"disponible", checkbox.text, re.IGNORECASE):
+        for checkbox in sortButton.find_elements(By.CSS_SELECTOR, 'button[data-test="sort-picker-button"]'):
+            if checkbox.text == 'Precio: De menor a mayor':
                 checkbox.click()
-                break
-    except (NoSuchElementException , TimeoutException) as e:
-        print(e.args)
+        try:
+            availability = shadow_root.find_element(By.CSS_SELECTOR, 'div[data-test="availability"]')
+            availability.click()
+            time.sleep(0.3)
+            # Look for "available" checkbox and click it (the checkbox order changes with the query)
+            for checkbox in availability.find_elements(By.CSS_SELECTOR, 'button[data-test="filter"]'):
+                if re.search(r"disponible", checkbox.text, re.IGNORECASE):
+                    checkbox.click()
+                    break
+        except (NoSuchElementException , TimeoutException) as e:
+            print(e.args)
+    except: 
+        print('casa del libro no se pudo ordenar')
     # Some margin to load all results (if I only rely on implicit, it might only get the first result)
     time.sleep(0.5)
     shadow_root = driver.execute_script("return arguments[0].shadowRoot", root1)
     results = shadow_root.find_elements(By.CSS_SELECTOR, "li.x-base-grid__item")
-    books = []
-    bookDf = pd.DataFrame()
+
     i=0
     # Once the results are loaded, I don't need the implicit wait. Some elements might not be found/needed
     driver.implicitly_wait(0)
@@ -158,41 +169,40 @@ def getBooksLibCentral(driver, query, bookLimit, ebook, itemCondition):
         i+=1
         try:
             #In stock? 
-            availability = result.find("span", class_='css-disponible')
-            if availability and result.find("span", class_='css-disponible').get_text().strip() == "Disponible":
+            if result.find_all("span", class_='css-sin-stock') or  result.find_all("span", class_='css-consultar'):
+                continue 
+            # Title
+            name_element = result.find(attrs={"itemprop": "name"})
+            title = name_element.get_text().strip()
 
-                # Title
-                name_element = result.find(attrs={"itemprop": "name"})
-                title = name_element.get_text().strip()
+            #Author
+            author = result.find("meta", attrs={"itemprop": "author"})['content'].strip()
+            detail = 'N/A'
 
-                #Author
-                author = result.find("meta", attrs={"itemprop": "author"})['content'].strip()
-                detail = 'N/A'
-
-                # Price 
-                try:
-                    price_substrings = result.find("div", class_="precio").find_all("span")
-                    current_price = price_substrings[0].get_text().strip() +' '+price_substrings[1].get_text().strip()
-                    if len(price_substrings) > 2:
-                        original_price = price_substrings[2].get_text().strip() +' '+price_substrings[1].get_text().strip()
-                    else:
-                        original_price = current_price
-                except e:
-                    #Book discarded if no price
-                    continue
-                # Image
-                try:
-                    img_url = baseUrl + result.find("img", class_='foto')['src']
-                except e:
-                    img_url = "N/A"
-                #Link
-                try:
-                    link = result.find("a", attrs={"itemprop": "url"})["href"].strip()
-                    link = baseUrl + link
-                except:
-                    link = "N/A"
-                books = includeBook(books,title,author,detail,img_url,link,"Librería central",original_price,current_price)
-                bookDf = pd.DataFrame(books)
+            # Price 
+            try:
+                price_substrings = result.find("div", class_="precio").find_all("span")
+                current_price = price_substrings[0].get_text().strip() +' '+price_substrings[1].get_text().strip()
+                if len(price_substrings) > 2:
+                    original_price = price_substrings[2].get_text().strip() +' '+price_substrings[1].get_text().strip()
+                else:
+                    original_price = current_price
+            except e:
+                #Book discarded if no price
+                continue
+            # Image
+            try:
+                img_url = baseUrl + result.find("img", class_='foto')['src']
+            except e:
+                img_url = "N/A"
+            #Link
+            try:
+                link = result.find("a", attrs={"itemprop": "url"})["href"].strip()
+                link = baseUrl + link
+            except:
+                link = "N/A"
+            books = includeBook(books,title,author,detail,img_url,link,"Librería central",original_price,current_price)
+            bookDf = pd.DataFrame(books)
             if len(books) == bookLimit:
                 break
         except Exception as e:
@@ -233,7 +243,6 @@ def getBooksIberLibro(driver, query, bookLimit, ebook, itemCondition):
             try:
                 link = result.find("a", attrs={"itemprop": "url"})["href"].strip()
                 link = baseUrl + link
-                print(link)
             except Exception as e:
                 link = "N/A"
 
@@ -263,18 +272,22 @@ def getBooksAmazon(driver, query, bookLimit, ebook, itemCondition):
     try:
         driver.find_element(By.ID, "searchDropdownBox").click()
         #Select books category
-        driver.find_element(By.XPATH, "//option[@value='search-alias=stripbooks']").click()
+        booksCategory = driver.find_element(By.XPATH, "//option[@value='search-alias=stripbooks']")
+        booksCategory.click()
         #Find search input and send query
         search = driver.find_element(By.XPATH, "//input[@id='twotabsearchtextbox']")
         search.send_keys(query)
         #Confirm search
-        driver.find_element(By.XPATH, "//input[@id='nav-search-submit-button']").click()
+        submit = driver.find_element(By.XPATH, "//input[@id='nav-search-submit-button']")
+        submit.click()
     except:
         print('opcion 2')
         #Sometimes the category is not shown until a first search (page load is different)
-        search0 = driver.find_element(By.ID, "nav-bb-search").click()
+        search0 = driver.find_element(By.ID, "nav-bb-search")
+        search0.click()
         search0.send_keys(query)
-        driver.find_element(By.ID, "nav-bb-button").click()
+        search0.send_keys(Keys.ENTER)
+        # driver.find_element(By.ID, "nav-bb-button").click()
         driver.find_element(By.ID, "searchDropdownBox").click()
         driver.find_element(By.XPATH, "//option[@value='search-alias=stripbooks']").click()
         driver.find_element(By.XPATH, "//input[@id='nav-search-submit-button']").click()
@@ -385,6 +398,8 @@ def getBooksEbay(driver, query, bookLimit, ebook, itemCondition):
             title = name_element.get_text().strip()
             print(title)
 
+            if "Libro Electrónico" in title and ebook:
+                continue
             #Author
             author = 'N/A'
             print(author)
@@ -418,11 +433,9 @@ def getBooksEbay(driver, query, bookLimit, ebook, itemCondition):
                 img_url = img_element.find('img')["src"]
             except e:
                 img_url = "N/A"
-            print(img_url)
             #Link
             try:
                 link = result.find("a", class_="s-item__link")["href"]
-                print(link)
             except:
                 link = "N/A"
 
@@ -458,7 +471,7 @@ def getBooksCorteIngles(driver, query, bookLimit, ebook, itemCondition):
             if "Libros" in categories.text:
                 categories.click()
                 break
-    time.sleep(0.4)
+    time.sleep(0.8)
     results = driver.find_elements(By.CSS_SELECTOR, 'li[class="products_list-item"]')
     driver.implicitly_wait(0.1)
     for result in results:
@@ -468,11 +481,12 @@ def getBooksCorteIngles(driver, query, bookLimit, ebook, itemCondition):
         
             author = result.find_element(By.CSS_SELECTOR, 'p[class="product_preview-brand--text"]').text
 
-            link = baseUrl + result.find_element(By.CSS_SELECTOR, 'a[class="product_link pointer"]').get_attribute("href")
+            # link = baseUrl + result.find_element(By.CSS_SELECTOR, 'a[class="product_link pointer"]').get_attribute("href")
+            link = result.find_element(By.CSS_SELECTOR, 'a[class="product_link pointer"]').get_attribute("data-url")
             
             img_url = result.find_element(By.CSS_SELECTOR, 'img[class="js_preview_image"]').get_attribute("src")
 
-            current_price = result.find_element(By.CSS_SELECTOR, 'span[class="price-sale"]').text
+            current_price = result.find_element(By.XPATH, './/span[@class="price-sale" or @class="price-unit--normal"]').text
             original_price = 'N/A'
             try:
                 original_price = result.find_element(By.CSS_SELECTOR, 'span[class="price-unit--original"]').text
@@ -553,6 +567,8 @@ def getBooksBuscaLibre(driver, query, bookLimit, ebook, itemCondition):
                 price_element = result.find_element(By.CSS_SELECTOR, 'div[class="box-precio-v2 row margin-top-10 hide-on-hover"]')
                 current_price = price_element.find_element(By.CSS_SELECTOR, 'p[class = "precio-ahora hide-on-hover margin-0 font-size-medium"]').text
                 original_price = price_element.find_element(By.CSS_SELECTOR, 'p[class = "precio-antes hide-on-hover margin-0 color-dark-gray font-weight-normal"]').text
+                if not original_price:
+                    original_price = current_price
                 # price_element = result.find_element(By.XPATH, 'div[contains(@class, "box-precios")]')
                 # current_price = price_element.find_element(By.XPATH, 'p[contains(@class, "precio-ahora")]').text
                 # original_price = price_element.find_element(By.XPATH, 'p[contains(@class, "precio-antes")]').text
@@ -605,10 +621,10 @@ def getResults(query, bookLimit, ebook, itemCondition, storeDic):
     # Receives a dictionary with value True or False for each store, from app input
     # Mapping keys from the dictionary to their corresponding functions:
     store_functions = {
+        'include_amazon': getBooksAmazon,
         'include_casalibro': getBooksCasaLibro,
         'include_libcentral': getBooksLibCentral,
         'include_iberlibro': getBooksIberLibro,
-        'include_amazon': getBooksAmazon,
         'include_ebay': getBooksEbay,
         'include_corteingles': getBooksCorteIngles,
         'include_buscalibre' : getBooksBuscaLibre

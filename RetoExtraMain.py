@@ -12,7 +12,7 @@ st.set_page_config(
 
 st.title("PC2 Reto Extra")
 st.header("Comparador de precios para libros")
-
+st.subheader("Daniel Herraiz")
 def drawDfTable(inputDf,dfkey):
 
     st.data_editor(
